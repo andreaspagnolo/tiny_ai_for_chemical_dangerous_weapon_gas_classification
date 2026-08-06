@@ -1,0 +1,39 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# The source dataset is CC BY-NC 4.0 and must be downloaded from Mendeley.
+Raw Raman spectral datasets of TEP, DIMP, and DMMP/
+data/raw/
+
+# Reproducible generated data. Final models, reports, and board samples are
+# intentionally retained as project deliverables under artifacts/.
+data/processed/*
+!data/processed/.gitkeep
+
+# Model Zoo / Hydra outputs.
+outputs/
+mlruns/
+**/experiments_outputs/
+
+# Phase 1 repository: dataset preparation only. These directories belong to
+# later training/deployment commits and must not enter the initial push.
+artifacts/
+scripts/
+integration/
+firmware/
+configs/stm32_model_zoo/
+docs/DEPLOYMENT_STM32N6.md
+docs/MODEL_CARD.md
+docs/RAPPORTO_INCREMENTALE_IT.md
+README.md
+src/raman_stm32/modeling.py
+src/raman_stm32/evaluation.py
+src/raman_stm32/samples.py
+src/raman_stm32/verification.py
+tests/test_configs.py
+tests/test_model.py

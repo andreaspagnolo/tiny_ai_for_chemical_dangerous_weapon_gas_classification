@@ -1,0 +1,41 @@
+seed: 20260805
+
+paths:
+  raw_dir: "Raw Raman spectral datasets of TEP, DIMP, and DMMP"
+  processed_dir: data/processed
+  models_dir: artifacts/models
+  reports_dir: artifacts/reports
+  samples_dir: artifacts/samples
+
+data:
+  class_names: [TEP, DIMP, DMMP]
+  spectral_length: 512
+  split:
+    train_fraction: 0.70
+    validation_fraction: 0.15
+    test_fraction: 0.15
+    # Every concentration is assigned wholly to exactly one split, globally
+    # across all three compounds. This is the conservative experimental-group
+    # proxy available in the published files.
+    group_by: concentration_fraction
+  preprocessing:
+    method: snv_clip_scale
+    clip_standard_deviations: 8.0
+    epsilon: 1.0e-6
+
+training:
+  batch_size: 32
+  epochs: 120
+  learning_rate: 0.001
+  early_stopping_patience: 18
+  reduce_lr_patience: 7
+  reduce_lr_factor: 0.5
+
+quantization:
+  representative_samples: 384
+  input_type: int8
+  output_type: int8
+
+samples:
+  per_class: 2
+

@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raman-stm32-classifier"
+version = "1.0.0"
+description = "Leakage-safe TEP/DIMP/DMMP Raman classification for STM32N6"
+readme = "README_DATASET_PREPARATION.md"
+requires-python = ">=3.12,<3.13"
+license = {text = "MIT"}
+dependencies = [
+  "joblib==1.4.2",
+  "numpy==1.26.4",
+  "openpyxl==3.1.5",
+  "pandas==2.2.3",
+  "PyYAML==6.0.2",
+  "scikit-learn==1.6.1",
+  "tensorflow==2.18.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.4"]
+
+[project.scripts]
+raman-stm32 = "raman_stm32.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
