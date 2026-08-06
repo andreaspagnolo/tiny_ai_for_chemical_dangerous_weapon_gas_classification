@@ -109,8 +109,7 @@ data/processed/
 ```
 
 The split and preprocessing rationale is documented in
-[`docs/DATASET.md`](docs/DATASET.md). Later commits can add the model and STM32
-Model Zoo phases without changing this preparation contract.
+[`docs/DATASET.md`](docs/DATASET.md).
 
 ## Background references
 
