@@ -31,6 +31,7 @@ docs/DEPLOYMENT_STM32N6.md
 docs/MODEL_CARD.md
 docs/RAPPORTO_INCREMENTALE_IT.md
 README.md
+README_FULL_PROJECT.md
 src/raman_stm32/modeling.py
 src/raman_stm32/evaluation.py
 src/raman_stm32/samples.py
