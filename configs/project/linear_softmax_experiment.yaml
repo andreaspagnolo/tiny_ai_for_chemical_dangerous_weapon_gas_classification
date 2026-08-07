@@ -1,0 +1,20 @@
+experiment_name: raman_linear_softmax
+
+model:
+  # L2 was selected using train/validation only. No logistic-regression
+  # coefficient or other pretrained weight is imported.
+  l2_regularization: 0.0001
+
+training:
+  initialization: random_glorot_uniform
+  batch_size: 32
+  epochs: 300
+  learning_rate: 0.01
+  early_stopping_patience: 40
+  early_stopping_min_delta: 1.0e-6
+
+quantization:
+  representative_samples: 384
+  input_type: int8
+  output_type: int8
+

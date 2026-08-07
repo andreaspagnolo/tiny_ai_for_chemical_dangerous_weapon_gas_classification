@@ -1,0 +1,180 @@
+{
+  "dataset_inspection": {
+    "included_files": [
+      "TEP_raw_Raman_spectra.xlsx",
+      "DIMP_raw_Raman_spectra.xlsx",
+      "DMMP_raw_Raman_spectra.xlsx"
+    ],
+    "excluded_main_task": "Linear_simulated_dataset.xlsx",
+    "total_spectra": 2123,
+    "spectral_variables": 512,
+    "raman_shift_cm1": {
+      "minimum": 36.8439758886287,
+      "maximum": 2546.08400497821,
+      "strictly_increasing": true
+    },
+    "finite_values": true,
+    "exact_duplicate_spectra_rows_including_all_occurrences": 41,
+    "concentration_values_fraction": [
+      0.005,
+      0.01,
+      0.02,
+      0.04,
+      0.06,
+      0.08,
+      0.1,
+      0.25,
+      0.5,
+      0.75,
+      1.0
+    ],
+    "per_compound": {
+      "TEP": {
+        "spectra": 683,
+        "number_min": 1,
+        "number_max": 684,
+        "missing_numbers": [
+          319
+        ],
+        "concentration_counts": {
+          "0.005": 56,
+          "0.01": 49,
+          "0.02": 73,
+          "0.04": 54,
+          "0.06": 44,
+          "0.08": 58,
+          "0.1": 64,
+          "0.25": 54,
+          "0.5": 80,
+          "0.75": 55,
+          "1": 96
+        }
+      },
+      "DIMP": {
+        "spectra": 723,
+        "number_min": 1,
+        "number_max": 723,
+        "missing_numbers": [],
+        "concentration_counts": {
+          "0.005": 82,
+          "0.01": 51,
+          "0.02": 79,
+          "0.04": 63,
+          "0.06": 76,
+          "0.08": 82,
+          "0.1": 61,
+          "0.25": 78,
+          "0.5": 59,
+          "0.75": 53,
+          "1": 39
+        }
+      },
+      "DMMP": {
+        "spectra": 717,
+        "number_min": 1,
+        "number_max": 718,
+        "missing_numbers": [
+          710
+        ],
+        "concentration_counts": {
+          "0.005": 123,
+          "0.01": 58,
+          "0.02": 50,
+          "0.04": 63,
+          "0.06": 46,
+          "0.08": 54,
+          "0.1": 88,
+          "0.25": 56,
+          "0.5": 69,
+          "0.75": 58,
+          "1": 52
+        }
+      }
+    },
+    "grouping_limitation": "The files contain concentration and a row index, but no acquisition/session ID. Concentration is therefore used as a conservative global experimental-group proxy."
+  },
+  "split_policy": {
+    "seed": 20260805,
+    "group_key": "concentration_fraction (global across compounds)",
+    "feature_values_used_to_choose_split": false,
+    "groups": {
+      "train": [
+        0.005,
+        0.02,
+        0.04,
+        0.08,
+        0.1,
+        0.5,
+        1.0
+      ],
+      "validation": [
+        0.01,
+        0.25
+      ],
+      "test": [
+        0.06,
+        0.75
+      ]
+    },
+    "disjoint": true,
+    "exact_duplicate_audit": {
+      "duplicate_occurrences": 41,
+      "duplicate_patterns": 20,
+      "patterns_crossing_splits": 0
+    }
+  },
+  "splits": {
+    "train": {
+      "samples": 1445,
+      "concentrations_fraction": [
+        0.005,
+        0.02,
+        0.04,
+        0.08,
+        0.1,
+        0.5,
+        1.0
+      ],
+      "class_counts": {
+        "TEP": 481,
+        "DIMP": 465,
+        "DMMP": 499
+      }
+    },
+    "validation": {
+      "samples": 346,
+      "concentrations_fraction": [
+        0.01,
+        0.25
+      ],
+      "class_counts": {
+        "TEP": 103,
+        "DIMP": 129,
+        "DMMP": 114
+      }
+    },
+    "test": {
+      "samples": 332,
+      "concentrations_fraction": [
+        0.06,
+        0.75
+      ],
+      "class_counts": {
+        "TEP": 99,
+        "DIMP": 129,
+        "DMMP": 104
+      }
+    }
+  },
+  "preprocessing": {
+    "method": "snv_clip_scale",
+    "clip_standard_deviations": 8.0,
+    "epsilon": 1e-06
+  },
+  "model_input_shape": [
+    1,
+    1,
+    512,
+    1
+  ]
+}

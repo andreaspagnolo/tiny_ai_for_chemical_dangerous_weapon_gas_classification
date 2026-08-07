@@ -1,0 +1,32 @@
+{
+  "files": [
+    {
+      "path": "/Users/andreaspagnolo/Desktop/chemical_weapons/artifacts/models/raman_linear_softmax_float32.keras",
+      "bytes": 22207,
+      "sha256": "2d04d05e28cd24468510af286f971b022481f7dab71964172c2dd688e2f97e58"
+    },
+    {
+      "path": "/Users/andreaspagnolo/Desktop/chemical_weapons/artifacts/models/raman_linear_softmax_float32.tflite",
+      "bytes": 7752,
+      "sha256": "4b6cf5797f046a62eb6f47669e3cd06cf0254e91b1c535a9098f9e8784fed289"
+    },
+    {
+      "path": "/Users/andreaspagnolo/Desktop/chemical_weapons/artifacts/models/raman_linear_softmax_int8.tflite",
+      "bytes": 3424,
+      "sha256": "536d23d12289ba60d0bd2e83d4b5620c7615e7cba76f7503f459e0c3f84c5d37"
+    }
+  ],
+  "checks": {
+    "trained_model_is_separate_from_logistic_baseline": true,
+    "static_batch_one": true,
+    "int8_input_and_output": true,
+    "only_reference_supported_operator_types": true,
+    "unrecognized_operator_types": [],
+    "operators": [
+      "RESHAPE",
+      "FULLY_CONNECTED",
+      "SOFTMAX"
+    ]
+  },
+  "compiler_note": "The local operator inventory is intentionally conservative. A STEdgeAI compiler report is authoritative for Neural-ART mapping."
+}

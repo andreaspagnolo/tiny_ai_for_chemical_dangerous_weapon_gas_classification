@@ -65,12 +65,11 @@ reference is in `firmware/raman_preprocess.c`.
 - `data/processed/dataset.npz`: arrays and non-sensitive metadata for the local
   Python pipeline.
 - `data/processed/{train,validation,test}.csv`: headerless, preprocessed
-  512-feature rows plus the final integer label, matching the Model Zoo signal
-  loader.
+  512-feature rows plus the final integer label for the fixed-length standalone
+  classifier input.
 - `data/processed/metadata.csv`: sample ID, class, fraction/percent
   concentration, group, source, and split.
 - `data/processed/raman_shift_axis.csv`: exact input-axis order.
 
 Generated data are ignored by version control. Recreate them from the licensed
 source files with `raman-stm32 prepare`.
-

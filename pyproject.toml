@@ -24,6 +24,7 @@ dev = ["pytest==8.3.4"]
 
 [project.scripts]
 raman-stm32 = "raman_stm32.cli:main"
+raman-linear-softmax = "raman_stm32.linear_softmax_experiment:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

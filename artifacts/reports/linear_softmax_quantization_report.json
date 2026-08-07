@@ -1,0 +1,43 @@
+{
+  "input": {
+    "name": "serving_default_raman_spectrum:0",
+    "shape": [
+      1,
+      1,
+      512,
+      1
+    ],
+    "shape_signature": [
+      1,
+      1,
+      512,
+      1
+    ],
+    "dtype": "int8",
+    "scale": 0.004478252027183771,
+    "zero_point": -96
+  },
+  "output": {
+    "name": "StatefulPartitionedCall_1:0",
+    "shape": [
+      1,
+      3
+    ],
+    "shape_signature": [
+      1,
+      3
+    ],
+    "dtype": "int8",
+    "scale": 0.00390625,
+    "zero_point": -128
+  },
+  "operators": [
+    "RESHAPE",
+    "FULLY_CONNECTED",
+    "SOFTMAX"
+  ],
+  "fully_integer_io": true,
+  "bytes": 3424,
+  "representative_samples": 384,
+  "representative_source": "training split only"
+}

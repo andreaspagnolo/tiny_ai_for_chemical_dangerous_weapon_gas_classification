@@ -46,10 +46,10 @@ In controlled research settings, TEP, DIMP and DMMP samples can support:
 The references below provide general chemical and defence-research background;
 they are not claims that this repository has validated any field detector.
 
-This first repository phase contains only the reusable code and configuration
-for inspecting and preparing the experimental Raman spectra of TEP, DIMP and
-DMMP. Training, quantization, STM32 deployment files, generated artifacts and
-the original workbooks are intentionally excluded from this commit.
+This repository contains the reusable dataset-preparation and Linear Softmax
+training/evaluation code. Generated artifacts and the original workbooks are
+not redistributed; the trained local artifacts included in the project are
+derived files, not the original dataset.
 
 The source dataset is version 1 of the Mendeley record:
 <https://data.mendeley.com/datasets/jtk7rv77td/1>
@@ -110,6 +110,57 @@ data/processed/
 
 The split and preprocessing rationale is documented in
 [`docs/DATASET.md`](docs/DATASET.md).
+
+## Reproduce the Linear Softmax results locally
+
+The following commands reproduce the standalone host experiment from the
+prepared dataset. They do not contact external services and do not require an
+STM32 board. Run them from the repository root in the verified Conda
+environment:
+
+```bash
+conda activate st_zoo
+cd /Users/andreaspagnolo/Desktop/chemical_weapons
+
+# Inspect the downloaded workbooks and regenerate the deterministic split.
+raman-stm32 inspect
+raman-stm32 prepare
+
+# Train from random Glorot weights (seed 20260805).
+PYTHONPATH=src python -m raman_stm32.linear_softmax_experiment train
+
+# Export a full-I/O INT8 TFLite model using 384 training spectra for calibration.
+PYTHONPATH=src python -m raman_stm32.linear_softmax_experiment quantize
+
+# Evaluate Keras FP32, TFLite FP32 and TFLite INT8 on the untouched test split.
+PYTHONPATH=src python -m raman_stm32.linear_softmax_experiment evaluate
+
+# Predict the six rows in the prepared prediction file.
+PYTHONPATH=src python -m raman_stm32.linear_softmax_experiment predict \
+  --input-csv data/processed/prediction.csv --preprocessed
+```
+
+The expected standalone result is **99.70% accuracy and 99.70% macro F1** for
+both FP32 and INT8. The INT8 model must preserve all FP32 test predictions.
+Reports are written to `artifacts/reports/`, while models are written to
+`artifacts/models/`.
+
+The same sequence can be executed as one command after dataset preparation:
+
+```bash
+PYTHONPATH=src python -m raman_stm32.linear_softmax_experiment all
+```
+
+`all` performs training, quantization, evaluation, sample export and local
+operator checks. Do not run `all` after the individual commands unless you
+intentionally want to retrain the model.
+
+## Local feasibility-study status
+
+The local training/testing commit focuses on the train-from-scratch Linear
+Softmax neural network. On the host test set it achieved 99.70% accuracy and
+99.70% macro F1 in both FP32 and INT8. The INT8 export preserved the standalone
+FP32 predictions.
 
 ## Background references
 
