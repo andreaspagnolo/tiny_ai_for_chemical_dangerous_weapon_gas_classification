@@ -20,8 +20,8 @@ outputs/
 mlruns/
 **/experiments_outputs/
 
-# Phase 1 repository: dataset preparation only. These directories belong to
-# later training/deployment commits and must not enter the initial push.
+# Full-project and STM32 Model Zoo material is intentionally outside this
+# focused Linear Softmax repository.
 artifacts/
 scripts/
 integration/
@@ -32,9 +32,5 @@ docs/MODEL_CARD.md
 docs/RAPPORTO_INCREMENTALE_IT.md
 README.md
 README_FULL_PROJECT.md
-src/raman_stm32/modeling.py
-src/raman_stm32/evaluation.py
-src/raman_stm32/samples.py
-src/raman_stm32/verification.py
 tests/test_configs.py
 tests/test_model.py

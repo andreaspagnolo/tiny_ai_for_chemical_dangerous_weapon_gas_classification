@@ -1,60 +1,51 @@
 # Tiny AI for chemical dangerous weapon gas classification
 
-## Project context for non-specialists
+This repository contains a reproducible, safety-oriented feasibility study for
+classifying Raman spectra of three lower-hazard organophosphorus simulants:
+TEP, DIMP, and DMMP. It prepares the published dataset, trains a 1,539-parameter
+Linear Softmax neural network from random weights, exports FP32 and full-integer
+INT8 TensorFlow Lite models, and evaluates them on a held-out test split.
 
-This repository is a research and safety-oriented feasibility study using
-Raman spectra of three organophosphorus compounds: TEP, DIMP and DMMP. These
-compounds are commonly used as lower-hazard chemical simulants for laboratory,
-defence and sensor research related to G-series nerve agents such as Sarin and
-Soman. Real nerve agents are extremely toxic and subject to strict
-international controls, so controlled simulants allow researchers to test
-instruments, detection systems and protective materials without handling the
-actual agents.
+This is a closed-set classifier for the three supplied classes. It is **not** a
+validated chemical-agent detector, does not reject unknown substances, does
+not estimate concentration, and must not be used for operational, medical, or
+safety decisions.
 
-The compounds still require appropriate laboratory safety procedures. This
-project is only a closed-set Raman-spectrum classifier for the three supplied
-classes. It is not a validated chemical-agent detector, does not estimate
-concentration, does not identify unknown substances and must not be used for
-operational, medical or safety decisions.
+## Expected result
 
-### Meaning of the abbreviations
+With the dataset and pinned Python dependencies described below, the held-out
+332-spectrum test split should produce the following results:
 
-- **TEP — triethyl phosphate:** a liquid used, among other applications, as a
-  flame retardant. In defence-related experiments it can be used to study how
-  a simulant interacts with protective materials through adsorption and
-  desorption.
-- **DIMP — diisopropyl methylphosphonate:** an organophosphonate associated
-  with Sarin-related chemistry and used in controlled studies of degradation,
-  analytical instrumentation and alarm calibration.
-- **DMMP — dimethyl methylphosphonate:** a colourless organophosphonate used in
-  flame-retardant applications and widely used as a Sarin simulant in sensor
-  and environmental-detection research because of relevant physical and
-  chemical similarities.
+| Export | Accuracy | Macro F1 |
+|---|---:|---:|
+| Keras FP32 | 99.70% | 99.70% |
+| TFLite FP32 | 99.70% | 99.70% |
+| TFLite INT8 | 99.70% | 99.70% |
 
-### Why these samples are studied
+The FP32 and INT8 TFLite models should agree on all test predictions. The INT8
+model should have static batch size 1, INT8 input/output, 1,539 parameters, and
+only `RESHAPE`, `FULLY_CONNECTED`, and `SOFTMAX` operators.
 
-In controlled research settings, TEP, DIMP and DMMP samples can support:
+These are internal holdout results from one small, single-source dataset. They
+do not establish generalization to other instruments, backgrounds, sample
+matrices, compounds, or field conditions.
 
-1. **Sensor development:** checking whether portable detection instruments can
-   recognise a known simulant;
-2. **Protective filtration studies:** evaluating adsorbents such as activated
-   carbon used in protective equipment;
-3. **Instrument calibration and training:** calibrating laboratory instruments
-   such as chromatographs and spectrometers without exposing operators to real
-   nerve agents.
+## 1. Clone the repository
 
-The references below provide general chemical and defence-research background;
-they are not claims that this repository has validated any field detector.
+The shell commands in this README must be run from the repository root, **not**
+from inside the raw-dataset directory.
 
-This repository contains the reusable dataset-preparation and Linear Softmax
-training/evaluation code. Generated artifacts and the original workbooks are
-not redistributed; the trained local artifacts included in the project are
-derived files, not the original dataset.
+```bash
+git clone https://github.com/andreaspagnolo/tiny_ai_for_chemical_dangerous_weapon_gas_classification.git
+cd tiny_ai_for_chemical_dangerous_weapon_gas_classification
+```
 
-The source dataset is version 1 of the Mendeley record:
-<https://data.mendeley.com/datasets/jtk7rv77td/1>
+## 2. Download and place the dataset
 
-Download the three experimental workbooks and place them in:
+Download version 1 of the dataset from the
+[Mendeley Data record](https://data.mendeley.com/datasets/jtk7rv77td/1). Create
+the directory below at the repository root and place the three experimental
+workbooks in it:
 
 ```text
 Raw Raman spectral datasets of TEP, DIMP, and DMMP/
@@ -63,124 +54,174 @@ Raw Raman spectral datasets of TEP, DIMP, and DMMP/
 └── DMMP_raw_Raman_spectra.xlsx
 ```
 
-`Linear_simulated_dataset.xlsx` is deliberately excluded from the main task.
-The original data are not redistributed and remain subject to the Mendeley
-CC BY-NC 4.0 licence.
+`Linear_simulated_dataset.xlsx` and the publisher's `README.txt` may remain in
+the same directory, but the simulated workbook is deliberately excluded from
+the classification task. The original dataset is not redistributed by this
+repository and remains under the Mendeley CC BY-NC 4.0 licence.
 
-## Reproduce the preparation with Conda
+Before continuing, check that the required files are in the correct location:
+
+```bash
+test -f "Raw Raman spectral datasets of TEP, DIMP, and DMMP/TEP_raw_Raman_spectra.xlsx"
+test -f "Raw Raman spectral datasets of TEP, DIMP, and DMMP/DIMP_raw_Raman_spectra.xlsx"
+test -f "Raw Raman spectral datasets of TEP, DIMP, and DMMP/DMMP_raw_Raman_spectra.xlsx"
+```
+
+All three commands should finish silently with exit status zero.
+
+## 3. Create the pinned Conda environment
+
+Python 3.12 is required. The dependency versions used to generate the supplied
+results are pinned in `requirements.txt`.
 
 ```bash
 conda create -n raman-preprocessing python=3.12 -y
 conda activate raman-preprocessing
 python -m pip install -r requirements.txt
 python -m pip install -e . --no-deps
+```
 
-raman-stm32 inspect
-raman-stm32 prepare
+Confirm that the package and all Linear Softmax helper modules are available:
+
+```bash
+python -c "import raman_stm32.evaluation, raman_stm32.modeling, raman_stm32.samples, raman_stm32.verification; print('installation OK')"
 python -m pytest -q
 ```
 
-The preparation code:
+The test suite should report `4 passed`. If Python reports
+`No module named 'raman_stm32.evaluation'`, the checkout is incomplete: the
+four helper files under `src/raman_stm32/` are required, and reinstalling an
+incomplete checkout cannot create them.
 
-- verifies the common 512-point Raman axis and finite values;
-- retains compound, sample number and concentration metadata;
-- excludes the simulated linear workbook;
-- assigns complete concentration groups to train, validation or test;
-- uses a deterministic seed (`20260805`);
-- applies per-spectrum SNV, clipping to ±8 standard deviations and scaling to
-  `[-1, 1]`;
-- writes Model-Zoo-compatible CSV files with 512 features and one label column.
+## 4. Reproduce the dataset and model results
 
-The published files do not contain session or specimen identifiers. Therefore
-concentration is used as a conservative global group proxy to prevent spectra
-from the same concentration appearing in different splits.
+Keep the `raman-preprocessing` environment active and remain at the repository
+root. Run the complete sequence exactly once:
 
-Generated files are written under `data/processed/` and remain ignored by Git:
+```bash
+raman-stm32 inspect
+raman-stm32 prepare
+raman-linear-softmax all
+```
+
+The equivalent explicit sequence is useful when inspecting one phase at a
+time. Do not run both sequences unless you intentionally want to retrain and
+overwrite the generated artifacts.
+
+```bash
+raman-stm32 inspect
+raman-stm32 prepare
+raman-linear-softmax train
+raman-linear-softmax quantize
+raman-linear-softmax evaluate
+raman-linear-softmax export-samples
+raman-linear-softmax verify
+```
+
+Training starts from deterministic random Glorot weights with seed `20260805`.
+No scikit-learn or pretrained coefficients are imported. Quantization uses 384
+training spectra for calibration, and evaluation uses only the untouched test
+split.
+
+TensorFlow numerical details can vary slightly between operating systems and
+CPU implementations. The classification metrics and prediction agreement
+below are the reproducibility criteria; byte-for-byte identity of regenerated
+Keras files is not promised.
+
+## 5. Verify the reproduced metrics
+
+After the pipeline finishes, copy and run this check from the repository root:
+
+```bash
+python - <<'PY'
+import json
+from pathlib import Path
+
+report_path = Path("artifacts/reports/linear_softmax_evaluation_metrics.json")
+report = json.loads(report_path.read_text(encoding="utf-8"))
+expected_accuracy = 0.9969879518072289
+expected_macro_f1 = 0.9970209513356721
+
+for model_name in (
+    "linear_softmax_float32_keras",
+    "linear_softmax_float32_tflite",
+    "linear_softmax_int8",
+):
+    metrics = report["metrics"][model_name]
+    assert abs(metrics["accuracy"] - expected_accuracy) < 1e-12, metrics
+    assert abs(metrics["macro_f1"] - expected_macro_f1) < 1e-12, metrics
+
+agreement = report["linear_float_int8"]["prediction_agreement"]
+assert agreement == 1.0, agreement
+print("Reproduction verified: 99.70% accuracy, 99.70% macro F1, FP32/INT8 agreement 100%")
+PY
+```
+
+## Generated outputs
+
+Dataset preparation writes:
 
 ```text
 data/processed/
-├── train.csv
-├── validation.csv
-├── test.csv
+├── train.csv             # 1,445 spectra
+├── validation.csv        # 346 spectra
+├── test.csv              # 332 spectra
 ├── prediction.csv
 ├── metadata.csv
 ├── raman_shift_axis.csv
 └── dataset.npz
 ```
 
-The split and preprocessing rationale is documented in
-[`docs/DATASET.md`](docs/DATASET.md).
+Training and export write the models to `artifacts/models/`, detailed JSON
+reports to `artifacts/reports/`, and six deployment examples to
+`artifacts/samples/linear_softmax/`.
 
-## Reproduce the Linear Softmax results locally
-
-The following commands reproduce the standalone host experiment from the
-prepared dataset. They do not contact external services and do not require an
-STM32 board. Run them from the repository root in the verified Conda
-environment:
+For predictions on the prepared six-row example:
 
 ```bash
-conda activate st_zoo
-cd /Users/andreaspagnolo/Desktop/chemical_weapons
-
-# Inspect the downloaded workbooks and regenerate the deterministic split.
-raman-stm32 inspect
-raman-stm32 prepare
-
-# Train from random Glorot weights (seed 20260805).
-PYTHONPATH=src python -m raman_stm32.linear_softmax_experiment train
-
-# Export a full-I/O INT8 TFLite model using 384 training spectra for calibration.
-PYTHONPATH=src python -m raman_stm32.linear_softmax_experiment quantize
-
-# Evaluate Keras FP32, TFLite FP32 and TFLite INT8 on the untouched test split.
-PYTHONPATH=src python -m raman_stm32.linear_softmax_experiment evaluate
-
-# Predict the six rows in the prepared prediction file.
-PYTHONPATH=src python -m raman_stm32.linear_softmax_experiment predict \
-  --input-csv data/processed/prediction.csv --preprocessed
+raman-linear-softmax predict \
+  --input-csv data/processed/prediction.csv \
+  --preprocessed
 ```
 
-The expected standalone result is **99.70% accuracy and 99.70% macro F1** for
-both FP32 and INT8. The INT8 model must preserve all FP32 test predictions.
-Reports are written to `artifacts/reports/`, while models are written to
-`artifacts/models/`.
+Omit `--preprocessed` only for a headerless CSV containing raw 512-point Raman
+spectra. Further details are in [the dataset documentation](docs/DATASET.md),
+[the experiment report](docs/LINEAR_SOFTMAX_EXPERIMENT.md), and
+[the model card](docs/LINEAR_SOFTMAX_MODEL_CARD.md).
 
-The same sequence can be executed as one command after dataset preparation:
+## Dataset preparation policy
 
-```bash
-PYTHONPATH=src python -m raman_stm32.linear_softmax_experiment all
-```
+The preparation step verifies the shared 512-point Raman axis and finite
+values, retains compound/sample/concentration metadata, and applies
+per-spectrum standard normal variate (SNV), clipping at ±8 standard deviations,
+then scaling to `[-1, 1]`.
 
-`all` performs training, quantization, evaluation, sample export and local
-operator checks. Do not run `all` after the individual commands unless you
-intentionally want to retrain the model.
+The published files contain no session or specimen identifiers. Concentration
+is therefore used as a conservative global grouping proxy so that spectra at
+the same concentration never appear in different splits. The split is
+deterministic and does not use spectral feature values.
 
-## Local feasibility-study status
+## Compounds and research context
 
-The local training/testing commit focuses on the train-from-scratch Linear
-Softmax neural network. On the host test set it achieved 99.70% accuracy and
-99.70% macro F1 in both FP32 and INT8. The INT8 export preserved the standalone
-FP32 predictions.
+- **TEP — triethyl phosphate:** used in applications including flame
+  retardancy and as a lower-hazard simulant in controlled protective-material
+  research.
+- **DIMP — diisopropyl methylphosphonate:** an organophosphonate used in
+  controlled analytical, degradation, and instrument-calibration studies.
+- **DMMP — dimethyl methylphosphonate:** an organophosphonate widely used as a
+  lower-hazard simulant in sensor and environmental-detection research.
 
-## Background references
+The compounds still require appropriate laboratory safety procedures.
 
-1. [Diisopropyl methylphosphonate — ScienceDirect background](https://www.sciencedirect.com/topics/chemistry/diisopropyl-methylphosphonate)
-2. [Organophosphorus simulants and detection research — PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC11861048/)
-3. [Triethyl phosphate research background — Taylor & Francis](https://www.tandfonline.com/doi/full/10.1080/17518253.2024.2438068)
-4. [DIMP/DMMP/TEP thermal-analysis context — ResearchGate](https://www.researchgate.net/figure/Evolution-of-a-t-max-DIMP-DMMP-8-DEMP-9-and-TEP-7-and-b-t-ign-DIMP-and_fig5_341081951)
-5. [Dimethyl methylphosphonate — Wikipedia overview](https://en.wikipedia.org/wiki/Dimethyl_methylphosphonate)
-
-## Ownership and license
+## Ownership and licence
 
 Except where otherwise stated, the original material in this repository is
 licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0
 International License (CC BY-NC-SA 4.0).
 
-Copyright © 2026 Andrea Spagnolo, Danilo Pau, and
-STMicroelectronics S.r.l.
+Copyright © 2026 Andrea Spagnolo, Danilo Pau, and STMicroelectronics S.r.l.
 
-See [`LICENSE.md`](LICENSE.md) for the complete license terms.
-
-Third-party software, models, datasets, images, trademarks, and external assets
-retain their respective licenses and are not covered by this repository's
-license unless explicitly stated.
+See [LICENSE.md](LICENSE.md) for the complete terms. Third-party software,
+models, datasets, images, trademarks, and external assets retain their own
+licences and are not covered by the repository licence unless explicitly
+stated.
