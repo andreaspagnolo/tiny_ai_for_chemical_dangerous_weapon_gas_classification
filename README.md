@@ -1,51 +1,61 @@
-# Tiny AI for chemical dangerous weapon gas classification
+# Tiny AI for Raman classification on STM32N6
 
-This repository contains a reproducible, safety-oriented feasibility study for
-classifying Raman spectra of three lower-hazard organophosphorus simulants:
-TEP, DIMP, and DMMP. It prepares the published dataset, trains a 1,539-parameter
-Linear Softmax neural network from random weights, exports FP32 and full-integer
-INT8 TensorFlow Lite models, and evaluates them on a held-out test split.
+This repository reproduces the complete Linear Softmax neural-network workflow
+for classifying Raman spectra of TEP, DIMP, and DMMP:
 
-This is a closed-set classifier for the three supplied classes. It is **not** a
-validated chemical-agent detector, does not reject unknown substances, does
-not estimate concentration, and must not be used for operational, medical, or
-safety decisions.
+1. build the leakage-safe dataset;
+2. train, quantize, and test the network locally;
+3. train, quantize, and test the same network through STM32 AI Model Zoo
+   Services;
+4. benchmark the resulting full-INT8 model on `STM32N6570-DK` through ST Edge
+   AI Developer Cloud.
 
-## Expected result
+The network is `Flatten(512) -> Dense(3, softmax)`, with 1,539 trainable
+parameters. It is initialized from random Glorot weights and trained with Adam;
+no scikit-learn coefficients or pretrained weights are imported.
 
-With the dataset and pinned Python dependencies described below, the held-out
-332-spectrum test split should produce the following results:
+This is a closed-set feasibility study on one small, single-source dataset. It
+is **not** a validated chemical-agent detector, cannot reject unknown
+substances, does not estimate concentration, and must not be used for
+operational, medical, or safety decisions.
 
-| Export | Accuracy | Macro F1 |
-|---|---:|---:|
-| Keras FP32 | 99.70% | 99.70% |
-| TFLite FP32 | 99.70% | 99.70% |
-| TFLite INT8 | 99.70% | 99.70% |
+## Expected results
 
-The FP32 and INT8 TFLite models should agree on all test predictions. The INT8
-model should have static batch size 1, INT8 input/output, 1,539 parameters, and
-only `RESHAPE`, `FULLY_CONNECTED`, and `SOFTMAX` operators.
+The untouched test split contains 332 spectra at the held-out 6% and 75%
+concentrations.
 
-These are internal holdout results from one small, single-source dataset. They
-do not establish generalization to other instruments, backgrounds, sample
-matrices, compounds, or field conditions.
+| Workflow | Model | Accuracy | Macro F1 |
+|---|---|---:|---:|
+| Local | Keras FP32 | 99.70% | 99.70% |
+| Local | TFLite FP32 | 99.70% | 99.70% |
+| Local | TFLite INT8 | 99.70% | 99.70% |
+| Model Zoo / N6 candidate | Keras FP32 | 100.00% | 100.00% |
+| Model Zoo / N6 candidate | TFLite INT8 | 100.00% | 100.00% |
+
+The Developer Cloud benchmark of the Model Zoo INT8 network on
+`STM32N6570-DK` produced 0.02 ms inference time, 0.017 M cycles, 0.53 KiB total
+RAM, and 24.35 KiB total flash.
+
+The 100% value is the test-set accuracy of the Model Zoo model prepared for
+STM32N6. Developer Cloud benchmarks that exact model on ST's board farm and
+reports hardware performance; it does not calculate classification accuracy
+from the Raman dataset.
 
 ## 1. Clone the repository
 
-The shell commands in this README must be run from the repository root, **not**
-from inside the raw-dataset directory.
+Run every shell command below from the repository root unless a section
+explicitly changes directory.
 
 ```bash
 git clone https://github.com/andreaspagnolo/tiny_ai_for_chemical_dangerous_weapon_gas_classification.git
 cd tiny_ai_for_chemical_dangerous_weapon_gas_classification
 ```
 
-## 2. Download and place the dataset
+## 2. Download the dataset
 
-Download version 1 of the dataset from the
-[Mendeley Data record](https://data.mendeley.com/datasets/jtk7rv77td/1). Create
-the directory below at the repository root and place the three experimental
-workbooks in it:
+Download version 1 from the
+[Mendeley Data record](https://data.mendeley.com/datasets/jtk7rv77td/1) and
+place the three experimental workbooks at exactly these paths:
 
 ```text
 Raw Raman spectral datasets of TEP, DIMP, and DMMP/
@@ -54,174 +64,169 @@ Raw Raman spectral datasets of TEP, DIMP, and DMMP/
 └── DMMP_raw_Raman_spectra.xlsx
 ```
 
-`Linear_simulated_dataset.xlsx` and the publisher's `README.txt` may remain in
-the same directory, but the simulated workbook is deliberately excluded from
-the classification task. The original dataset is not redistributed by this
-repository and remains under the Mendeley CC BY-NC 4.0 licence.
+`Linear_simulated_dataset.xlsx` is deliberately excluded. The source dataset
+is not redistributed and remains under the Mendeley CC BY-NC 4.0 licence.
 
-Before continuing, check that the required files are in the correct location:
+## 3. Build the dataset and reproduce the local 99.70% result
 
-```bash
-test -f "Raw Raman spectral datasets of TEP, DIMP, and DMMP/TEP_raw_Raman_spectra.xlsx"
-test -f "Raw Raman spectral datasets of TEP, DIMP, and DMMP/DIMP_raw_Raman_spectra.xlsx"
-test -f "Raw Raman spectral datasets of TEP, DIMP, and DMMP/DMMP_raw_Raman_spectra.xlsx"
-```
-
-All three commands should finish silently with exit status zero.
-
-## 3. Create the pinned Conda environment
-
-Python 3.12 is required. The dependency versions used to generate the supplied
-results are pinned in `requirements.txt`.
+Python 3.12 is required. The Python package versions used for the reference
+run are pinned in `requirements.txt`.
 
 ```bash
-conda create -n raman-preprocessing python=3.12 -y
-conda activate raman-preprocessing
+conda create -n raman-local python=3.12.9 -y
+conda activate raman-local
 python -m pip install -r requirements.txt
 python -m pip install -e . --no-deps
-```
 
-Confirm that the package and all Linear Softmax helper modules are available:
-
-```bash
-python -c "import raman_stm32.evaluation, raman_stm32.modeling, raman_stm32.samples, raman_stm32.verification; print('installation OK')"
-python -m pytest -q
-```
-
-The test suite should report `4 passed`. If Python reports
-`No module named 'raman_stm32.evaluation'`, the checkout is incomplete: the
-four helper files under `src/raman_stm32/` are required, and reinstalling an
-incomplete checkout cannot create them.
-
-## 4. Reproduce the dataset and model results
-
-Keep the `raman-preprocessing` environment active and remain at the repository
-root. Run the complete sequence exactly once:
-
-```bash
 raman-stm32 inspect
 raman-stm32 prepare
 raman-linear-softmax all
 ```
 
-The equivalent explicit sequence is useful when inspecting one phase at a
-time. Do not run both sequences unless you intentionally want to retrain and
-overwrite the generated artifacts.
+Dataset preparation writes 1,445 training rows, 346 validation rows, and 332
+test rows under `data/processed/`. The deterministic split uses seed
+`20260805` and groups spectra globally by concentration so that one
+concentration cannot occur in multiple splits. Each spectrum is transformed
+with per-spectrum standard normal variate, clipped at +/-8 standard deviations,
+and scaled to `[-1, 1]`.
+
+`raman-linear-softmax all` trains from scratch, exports FP32 and full-INT8
+TFLite models, evaluates all exports on the held-out test set, and writes
+`artifacts/reports/linear_softmax_evaluation_metrics.json`.
+
+## 4. Create an ST Edge AI Developer Cloud account
+
+1. Open [ST Edge AI Developer Cloud](https://stedgeai-dc.st.com/).
+2. Select **START NOW** or **Sign in**.
+3. If you do not have a myST account, select **Create Account**, complete the
+   registration form, and finish the requested account verification.
+4. Sign in once through the browser and accept the service terms shown by ST.
+
+Account creation and Developer Cloud access are free of charge. The current
+official instructions are available in the
+[ST Developer Cloud getting-started guide](https://wiki.st.com/stm32mcu/wiki/AI%3AGetting_started_with_ST_Edge_AI_Developer_Cloud).
+
+The benchmark command later asks for the myST credentials interactively. Do
+not store credentials, passwords, or tokens in this repository, its YAML files,
+environment variables, or shell commands. Only the TFLite model is uploaded;
+the Raman dataset is not uploaded.
+
+## 5. Install the exact STM32 AI Model Zoo Services version
+
+The reference run used STM32 AI Model Zoo Services `v4.1.1`, commit
+`0f6210ed5156126b782e1c43249063a477484b20`, and Python 3.12.9. Use a separate
+environment from the local workflow.
 
 ```bash
-raman-stm32 inspect
-raman-stm32 prepare
-raman-linear-softmax train
-raman-linear-softmax quantize
-raman-linear-softmax evaluate
-raman-linear-softmax export-samples
-raman-linear-softmax verify
+export RAMAN_PROJECT_ROOT="$(pwd)"
+
+git clone --branch v4.1.1 --depth 1 \
+  https://github.com/STMicroelectronics/stm32ai-modelzoo-services.git \
+  ../stm32ai-modelzoo-services
+git -C ../stm32ai-modelzoo-services checkout \
+  0f6210ed5156126b782e1c43249063a477484b20
+
+conda create -n st-zoo-411 python=3.12.9 -y
+conda activate st-zoo-411
+python -m pip install -r ../stm32ai-modelzoo-services/requirements.txt
+
+python scripts/install_model_zoo_overlay.py \
+  --model-zoo-dir ../stm32ai-modelzoo-services
 ```
 
-Training starts from deterministic random Glorot weights with seed `20260805`.
-No scikit-learn or pretrained coefficients are imported. Quantization uses 384
-training spectra for calibration, and evaluation uses only the untouched test
-split.
+The overlay registers only `raman_linear_softmax` in the official
+`arc_fault_detection` service. It also applies the required v4.1.1 fixes for a
+static batch-one, full-INT8 TFLite deployment model.
 
-TensorFlow numerical details can vary slightly between operating systems and
-CPU implementations. The classification metrics and prediction agreement
-below are the reproducibility criteria; byte-for-byte identity of regenerated
-Keras files is not promised.
+## 6. Reproduce the Model Zoo 100% result
 
-## 5. Verify the reproduced metrics
-
-After the pipeline finishes, copy and run this check from the repository root:
+Keep `st-zoo-411` active. The commands below train a new Model Zoo checkpoint,
+evaluate it in FP32, quantize it to full INT8, and evaluate the INT8 model on
+the same untouched test split.
 
 ```bash
-python - <<'PY'
-import json
-from pathlib import Path
+cd ../stm32ai-modelzoo-services/arc_fault_detection
 
-report_path = Path("artifacts/reports/linear_softmax_evaluation_metrics.json")
-report = json.loads(report_path.read_text(encoding="utf-8"))
-expected_accuracy = 0.9969879518072289
-expected_macro_f1 = 0.9970209513356721
+python stm32ai_main.py \
+  --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" \
+  --config-name linear_softmax_training_config.yaml
 
-for model_name in (
-    "linear_softmax_float32_keras",
-    "linear_softmax_float32_tflite",
-    "linear_softmax_int8",
-):
-    metrics = report["metrics"][model_name]
-    assert abs(metrics["accuracy"] - expected_accuracy) < 1e-12, metrics
-    assert abs(metrics["macro_f1"] - expected_macro_f1) < 1e-12, metrics
+python stm32ai_main.py \
+  --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" \
+  --config-name linear_softmax_evaluation_float_config.yaml
 
-agreement = report["linear_float_int8"]["prediction_agreement"]
-assert agreement == 1.0, agreement
-print("Reproduction verified: 99.70% accuracy, 99.70% macro F1, FP32/INT8 agreement 100%")
-PY
+python stm32ai_main.py \
+  --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" \
+  --config-name linear_softmax_quantization_config.yaml
+
+python stm32ai_main.py \
+  --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" \
+  --config-name linear_softmax_evaluation_int8_config.yaml
 ```
 
-## Generated outputs
-
-Dataset preparation writes:
+The generated deployment model is:
 
 ```text
-data/processed/
-├── train.csv             # 1,445 spectra
-├── validation.csv        # 346 spectra
-├── test.csv              # 332 spectra
-├── prediction.csv
-├── metadata.csv
-├── raman_shift_axis.csv
-└── dataset.npz
+artifacts/model_zoo/linear_softmax/quantization/quantized_models/quantized_model.tflite
 ```
 
-Training and export write the models to `artifacts/models/`, detailed JSON
-reports to `artifacts/reports/`, and six deployment examples to
-`artifacts/samples/linear_softmax/`.
+It has signed INT8 input/output, static input shape `[1, 1, 512, 1]`, and only
+`RESHAPE`, `FULLY_CONNECTED`, and `SOFTMAX` operators.
 
-For predictions on the prepared six-row example:
+## 7. Benchmark the generated network on STM32N6 Developer Cloud
+
+Keep `st-zoo-411` active and remain in the Model Zoo
+`arc_fault_detection` directory.
 
 ```bash
-raman-linear-softmax predict \
-  --input-csv data/processed/prediction.csv \
-  --preprocessed
+python stm32ai_main.py \
+  --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" \
+  --config-name linear_softmax_benchmarking_stm32n6_config.yaml
 ```
 
-Omit `--preprocessed` only for a headerless CSV containing raw 512-point Raman
-spectra. Further details are in [the dataset documentation](docs/DATASET.md),
-[the experiment report](docs/LINEAR_SOFTMAX_EXPERIMENT.md), and
-[the model card](docs/LINEAR_SOFTMAX_MODEL_CARD.md).
+Enter the myST credentials only at the interactive prompt. The command uploads
+the generated INT8 network and benchmarks it on `STM32N6570-DK`. Its output log
+is written to:
 
-## Dataset preparation policy
+```text
+artifacts/model_zoo/linear_softmax/benchmarking_stm32n6/stm32ai_main.log
+```
 
-The preparation step verifies the shared 512-point Raman axis and finite
-values, retains compound/sample/concentration metadata, and applies
-per-spectrum standard normal variate (SNV), clipping at ±8 standard deviations,
-then scaling to `[-1, 1]`.
+The reference run was performed on 6 August 2026. Developer Cloud selected
+platform 4.0.1 with STM32 backend 12.0.1 after warning that the requested 4.0.0
+platform was unavailable.
 
-The published files contain no session or specimen identifiers. Concentration
-is therefore used as a conservative global grouping proxy so that spectra at
-the same concentration never appear in different splits. The split is
-deterministic and does not use spectral feature values.
+## 8. Final result check
 
-## Compounds and research context
+After all previous commands complete, run this single final check:
 
-- **TEP — triethyl phosphate:** used in applications including flame
-  retardancy and as a lower-hazard simulant in controlled protective-material
-  research.
-- **DIMP — diisopropyl methylphosphonate:** an organophosphonate used in
-  controlled analytical, degradation, and instrument-calibration studies.
-- **DMMP — dimethyl methylphosphonate:** an organophosphonate widely used as a
-  lower-hazard simulant in sensor and environmental-detection research.
+```bash
+cd "$RAMAN_PROJECT_ROOT"
+conda activate raman-local
+python scripts/verify_reproduction.py
+```
 
-The compounds still require appropriate laboratory safety procedures.
+It recalculates the Model Zoo FP32 and INT8 predictions, checks the local
+report, validates the deployment tensor/operator contract, and confirms that
+the STM32N6 Developer Cloud benchmark completed with the expected result. It
+must print:
 
-## Ownership and licence
+```text
+Reproduction verified successfully
+Local Linear Softmax: accuracy 99.70%, macro F1 99.70%
+STM32N6 Model Zoo candidate: FP32/INT8 accuracy 100.00%, macro F1 100.00%
+Developer Cloud STM32N6570-DK: 0.02 ms, 0.017 M cycles
+```
+
+TensorFlow floating-point details can vary across operating systems and CPU
+implementations. If the predictions or reported metrics differ, the final
+command fails rather than treating the run as an exact reproduction.
+
+## Licence
 
 Except where otherwise stated, the original material in this repository is
 licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0
-International License (CC BY-NC-SA 4.0).
+International License. Third-party software, models, datasets, and trademarks
+retain their respective licences. See [LICENSE.md](LICENSE.md).
 
 Copyright © 2026 Andrea Spagnolo, Danilo Pau, and STMicroelectronics S.r.l.
-
-See [LICENSE.md](LICENSE.md) for the complete terms. Third-party software,
-models, datasets, images, trademarks, and external assets retain their own
-licences and are not covered by the repository licence unless explicitly
-stated.

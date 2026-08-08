@@ -1,0 +1,58 @@
+general:
+  project_name: raman_linear_softmax
+  logs_dir: logs
+  saved_models_dir: saved_models
+  display_figures: false
+  global_seed: 20260805
+  gpu_memory_limit: 4
+  deterministic_ops: true
+
+model:
+  model_name: raman_linear_softmax
+  input_shape: (1,512,1)
+
+operation_mode: training
+
+dataset:
+  dataset_name: afd_test_bench
+  class_names: [TEP, DIMP, DMMP]
+  training_path: ${RAMAN_PROJECT_ROOT}/data/processed/train.csv
+  validation_path: ${RAMAN_PROJECT_ROOT}/data/processed/validation.csv
+  test_path: ${RAMAN_PROJECT_ROOT}/data/processed/test.csv
+  quantization_path:
+  prediction_path:
+  test_split:
+  validation_split:
+  quantization_split:
+  to_cache: true
+  seed: 20260805
+
+preprocessing:
+  # Project CSVs are already SNV-preprocessed; do not normalize twice.
+  downsampling: false
+  normalization: false
+  time_domain: true
+
+training:
+  # Empty by design: the network is trained from random Glorot weights and
+  # never initialized with the logistic-regression coefficients.
+  initialize_parameters_from:
+  batch_size: 32
+  epochs: 300
+  optimizer:
+    Adam:
+      learning_rate: 0.01
+  callbacks:
+    EarlyStopping:
+      monitor: val_loss
+      mode: min
+      min_delta: 1.0e-6
+      restore_best_weights: true
+      patience: 40
+
+mlflow:
+  uri: ${RAMAN_PROJECT_ROOT}/artifacts/model_zoo/mlruns
+
+hydra:
+  run:
+    dir: ${oc.env:RAMAN_PROJECT_ROOT}/artifacts/model_zoo/linear_softmax/training

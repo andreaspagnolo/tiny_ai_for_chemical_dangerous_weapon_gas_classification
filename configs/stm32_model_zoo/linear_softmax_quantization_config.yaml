@@ -1,0 +1,50 @@
+general:
+  project_name: raman_linear_softmax
+  logs_dir: logs
+  saved_models_dir: saved_models
+  display_figures: false
+  global_seed: 20260805
+  gpu_memory_limit: 4
+  deterministic_ops: true
+
+model:
+  model_path: ${RAMAN_PROJECT_ROOT}/artifacts/model_zoo/linear_softmax/training/saved_models/best_model.keras
+  model_name:
+
+operation_mode: quantization
+
+dataset:
+  dataset_name: afd_test_bench
+  class_names: [TEP, DIMP, DMMP]
+  training_path:
+  validation_path:
+  test_path:
+  quantization_path: ${RAMAN_PROJECT_ROOT}/data/processed/train.csv
+  prediction_path:
+  test_split:
+  validation_split:
+  quantization_split: 1.0
+  to_cache: true
+  seed: 20260805
+
+preprocessing:
+  downsampling: false
+  normalization: false
+  time_domain: true
+
+quantization:
+  quantizer: TFlite_converter
+  quantization_type: PTQ
+  quantization_input_type: int8
+  quantization_output_type: int8
+  granularity: per_channel
+  optimize: false
+  target_opset: 17
+  export_dir: quantized_models
+
+mlflow:
+  uri: ${RAMAN_PROJECT_ROOT}/artifacts/model_zoo/mlruns
+
+hydra:
+  run:
+    dir: ${oc.env:RAMAN_PROJECT_ROOT}/artifacts/model_zoo/linear_softmax/quantization

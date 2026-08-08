@@ -1,0 +1,31 @@
+# Cloud benchmarking only uploads the trained INT8 model, never the dataset.
+general:
+  project_name: raman_linear_softmax_stm32n6
+  logs_dir: logs
+  saved_models_dir: saved_models
+  display_figures: false
+  global_seed: 20260805
+  gpu_memory_limit: 4
+  deterministic_ops: true
+
+model:
+  model_path: ${RAMAN_PROJECT_ROOT}/artifacts/model_zoo/linear_softmax/quantization/quantized_models/quantized_model.tflite
+
+operation_mode: benchmarking
+
+tools:
+  stedgeai:
+    optimization: time
+    on_cloud: true
+    path_to_stedgeai:
+  path_to_cubeIDE: unused_for_cloud_benchmarking
+
+benchmarking:
+  board: STM32N6570-DK
+
+mlflow:
+  uri: ${RAMAN_PROJECT_ROOT}/artifacts/model_zoo/mlruns
+
+hydra:
+  run:
+    dir: ${oc.env:RAMAN_PROJECT_ROOT}/artifacts/model_zoo/linear_softmax/benchmarking_stm32n6

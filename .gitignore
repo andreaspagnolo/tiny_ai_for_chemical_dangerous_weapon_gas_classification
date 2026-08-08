@@ -20,8 +20,9 @@ outputs/
 mlruns/
 **/experiments_outputs/
 
-# Full-project and STM32 Model Zoo material is intentionally outside this
-# focused Linear Softmax repository.
+# Generated and unrelated full-project material remains outside this focused
+# repository. The small set of Linear Softmax STM32N6 files required by the
+# README is force-tracked.
 artifacts/
 scripts/
 integration/
@@ -30,7 +31,6 @@ configs/stm32_model_zoo/
 docs/DEPLOYMENT_STM32N6.md
 docs/MODEL_CARD.md
 docs/RAPPORTO_INCREMENTALE_IT.md
-README.md
 README_FULL_PROJECT.md
 tests/test_configs.py
 tests/test_model.py
