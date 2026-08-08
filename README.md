@@ -100,7 +100,13 @@ TFLite models, evaluates all exports on the held-out test set, and writes
 2. Select **START NOW** or **Sign in**.
 3. If you do not have a myST account, select **Create Account**, complete the
    registration form, and finish the requested account verification.
-4. Sign in once through the browser and accept the service terms shown by ST.
+4. **Before running any Developer Cloud command**, sign in through the browser,
+   complete the first-access setup, and accept the terms and conditions shown
+   by ST.
+
+This browser step is mandatory even when the command-line login reports a
+successful connection. If the terms and conditions have not yet been accepted,
+the benchmarking command may fail with HTTP 502/503 responses.
 
 Account creation and Developer Cloud access are free of charge. The current
 official instructions are available in the
@@ -174,6 +180,10 @@ It has signed INT8 input/output, static input shape `[1, 1, 512, 1]`, and only
 `RESHAPE`, `FULLY_CONNECTED`, and `SOFTMAX` operators.
 
 ## 7. Benchmark the generated network on STM32N6 Developer Cloud
+
+Make sure that the browser login and acceptance of the Developer Cloud terms
+and conditions described in section 4 have been completed for the same myST
+account.
 
 Keep `st-zoo-411` active and remain in the Model Zoo
 `arc_fault_detection` directory.
