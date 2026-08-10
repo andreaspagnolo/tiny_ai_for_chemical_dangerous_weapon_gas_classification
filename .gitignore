@@ -21,13 +21,22 @@ mlruns/
 **/experiments_outputs/
 
 # Generated and unrelated full-project material remains outside this focused
-# repository. The small set of Linear Softmax STM32N6 files required by the
-# README is force-tracked.
+# repository. The small set of Linear Softmax STM32 files required by the
+# README is explicitly included below.
 artifacts/
-scripts/
+scripts/*
+!scripts/install_model_zoo_overlay.py
+!scripts/verify_reproduction.py
 integration/
 firmware/
-configs/stm32_model_zoo/
+configs/stm32_model_zoo/*
+!configs/stm32_model_zoo/linear_softmax_training_config.yaml
+!configs/stm32_model_zoo/linear_softmax_evaluation_float_config.yaml
+!configs/stm32_model_zoo/linear_softmax_quantization_config.yaml
+!configs/stm32_model_zoo/linear_softmax_evaluation_int8_config.yaml
+!configs/stm32_model_zoo/linear_softmax_benchmarking_stm32n6_config.yaml
+!configs/stm32_model_zoo/linear_softmax_benchmarking_stm32u5_config.yaml
+!configs/stm32_model_zoo/linear_softmax_benchmarking_stm32f4_config.yaml
 docs/DEPLOYMENT_STM32N6.md
 docs/MODEL_CARD.md
 docs/RAPPORTO_INCREMENTALE_IT.md

@@ -28,6 +28,7 @@ configuration had been fixed.
 - maximum epochs: 300;
 - early stopping: minimum validation loss, patience 40;
 - training samples: 1,445;
+- training-sample/parameter ratio: `1,445 / 1,539 = 0.939`;
 - validation samples: 346;
 - test samples: 332 from the held-out 6% and 75% concentration groups;
 - epochs completed: 285;
@@ -46,7 +47,9 @@ prediction relative to TFLite FP32; agreement is 100%, and the mean absolute
 score difference is 0.00278.
 
 These results indicate that the prepared spectra are close to linearly
-separable. They do not establish performance on other instruments,
+separable. The sub-one training-sample/parameter ratio also reinforces that
+the result is a limited feasibility result, not evidence of broad
+generalization. It does not establish performance on other instruments,
 laboratories, matrices, interferents, unknown substances or field samples.
 
 ## Embedded properties
