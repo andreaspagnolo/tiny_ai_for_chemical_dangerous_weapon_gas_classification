@@ -18,6 +18,8 @@ EXPECTED_FILES = (
     "arc_fault_detection/stm32ai_main.py",
     "arc_fault_detection/tf/src/quantization/tflite_quantizer.py",
     "arc_fault_detection/tf/src/evaluation/tflite_evaluator.py",
+    "arc_fault_detection/tf/src/prediction/tflite_predictor.py",
+    "arc_fault_detection/tf/src/utils/parse_config.py",
     "common/utils/cfg_utils.py",
     "common/utils/logs_utils.py",
 )
@@ -86,6 +88,12 @@ def install(project_root: Path, model_zoo_dir: Path) -> None:
     evaluator_path = (
         model_zoo_dir / "arc_fault_detection/tf/src/evaluation/tflite_evaluator.py"
     )
+    predictor_path = (
+        model_zoo_dir / "arc_fault_detection/tf/src/prediction/tflite_predictor.py"
+    )
+    parse_config_path = (
+        model_zoo_dir / "arc_fault_detection/tf/src/utils/parse_config.py"
+    )
     main_path = model_zoo_dir / "arc_fault_detection/stm32ai_main.py"
     config_utils_path = model_zoo_dir / "common/utils/cfg_utils.py"
     logs_utils_path = model_zoo_dir / "common/utils/logs_utils.py"
@@ -94,6 +102,8 @@ def install(project_root: Path, model_zoo_dir: Path) -> None:
     registry_text = registry_path.read_text(encoding="utf-8")
     quantizer_text = quantizer_path.read_text(encoding="utf-8")
     evaluator_text = evaluator_path.read_text(encoding="utf-8")
+    predictor_text = predictor_path.read_text(encoding="utf-8")
+    parse_config_text = parse_config_path.read_text(encoding="utf-8")
     main_text = main_path.read_text(encoding="utf-8")
     config_utils_text = config_utils_path.read_text(encoding="utf-8")
     logs_utils_text = logs_utils_path.read_text(encoding="utf-8")
@@ -194,6 +204,247 @@ def install(project_root: Path, model_zoo_dir: Path) -> None:
             raise RuntimeError(f"Unexpected evaluator structure in {evaluator_path}")
         evaluator_text = evaluator_text.replace(static_eval_old, static_eval_new, 1)
 
+    predictor_import_old = "from tabulate import tabulate\n\nfrom common.model_utils.tf_model_loader import load_model_from_path\n"
+    predictor_import_new = """from tabulate import tabulate
+import json
+from pathlib import Path
+
+from common.model_utils.tf_model_loader import load_model_from_path
+from common.utils import ai_runner_interp
+"""
+    if "from common.utils import ai_runner_interp" not in predictor_text:
+        if predictor_import_old not in predictor_text:
+            raise RuntimeError(f"Unexpected predictor imports in {predictor_path}")
+        predictor_text = predictor_text.replace(
+            predictor_import_old, predictor_import_new, 1
+        )
+
+    predictor_init_old = """        self.cfg = cfg
+        self.model = model
+        self.dataloaders = dataloaders
+"""
+    predictor_init_new = """        self.cfg = cfg
+        self.model = model
+        self.dataloaders = dataloaders
+        self.target = getattr(cfg.prediction, "target", "host")
+        self.ai_runner = None
+        if self.target in ("stedgeai_host", "stedgeai_n6", "stedgeai_h7p"):
+            self.ai_runner = ai_runner_interp(self.target, Path(model.model_path).name)
+"""
+    if "self.ai_runner = ai_runner_interp" not in predictor_text:
+        if predictor_init_old not in predictor_text:
+            raise RuntimeError(f"Unexpected predictor initialization in {predictor_path}")
+        predictor_text = predictor_text.replace(
+            predictor_init_old, predictor_init_new, 1
+        )
+
+    predictor_host_old = """        input_detail = interpreter.get_input_details()[0]
+        output_detail = interpreter.get_output_details()[0]
+        expected_shape = list(input_detail["shape"])
+        expected_shape[0] = x.shape[0]
+        interpreter.resize_tensor_input(input_detail["index"], expected_shape)
+        interpreter.allocate_tensors()
+        x_proc = self._quantize_input(x, input_detail)
+        interpreter.set_tensor(input_detail["index"], x_proc)
+        interpreter.invoke()
+        raw_out = interpreter.get_tensor(output_detail["index"])
+        return self._dequantize_output(raw_out, output_detail)
+"""
+    predictor_host_new = """        input_detail = interpreter.get_input_details()[0]
+        output_detail = interpreter.get_output_details()[0]
+        x_proc = self._quantize_input(x, input_detail)
+        shape_signature = input_detail.get("shape_signature", input_detail["shape"])
+        if int(shape_signature[0]) == 1:
+            interpreter.allocate_tensors()
+            outputs = []
+            for sample in x_proc:
+                interpreter.set_tensor(input_detail["index"], sample[np.newaxis, ...])
+                interpreter.invoke()
+                outputs.append(interpreter.get_tensor(output_detail["index"]).copy())
+            raw_out = np.concatenate(outputs, axis=0)
+        else:
+            expected_shape = list(input_detail["shape"])
+            expected_shape[0] = x.shape[0]
+            interpreter.resize_tensor_input(input_detail["index"], expected_shape)
+            interpreter.allocate_tensors()
+            interpreter.set_tensor(input_detail["index"], x_proc)
+            interpreter.invoke()
+            raw_out = interpreter.get_tensor(output_detail["index"])
+        return self._dequantize_output(raw_out, output_detail)
+"""
+    if "shape_signature = input_detail.get" not in predictor_text:
+        if predictor_host_old not in predictor_text:
+            raise RuntimeError(f"Unexpected host prediction in {predictor_path}")
+        predictor_text = predictor_text.replace(
+            predictor_host_old, predictor_host_new, 1
+        )
+
+    target_methods = """    def _get_target_probs(self, x: np.ndarray) -> np.ndarray:
+        input_detail = self.ai_runner.get_inputs()[0]
+        output_detail = self.ai_runner.get_outputs()[0]
+        input_scale = float(np.asarray(input_detail.scale).reshape(-1)[0])
+        input_zero_point = int(np.asarray(input_detail.zero_point).reshape(-1)[0])
+        output_scale = float(np.asarray(output_detail.scale).reshape(-1)[0])
+        output_zero_point = int(np.asarray(output_detail.zero_point).reshape(-1)[0])
+        outputs = []
+        for sample in x:
+            sample_batch = sample[np.newaxis, ...]
+            if np.issubdtype(input_detail.dtype, np.integer):
+                sample_batch = np.rint(sample_batch / input_scale + input_zero_point)
+                limits = np.iinfo(input_detail.dtype)
+                sample_batch = np.clip(sample_batch, limits.min, limits.max)
+            sample_batch = sample_batch.astype(input_detail.dtype)
+            raw_outputs, _ = self.ai_runner.invoke(sample_batch)
+            raw_output = np.asarray(raw_outputs[0])
+            if np.issubdtype(raw_output.dtype, np.integer) and output_scale > 0:
+                raw_output = (raw_output.astype(np.float32) - output_zero_point) * output_scale
+            outputs.append(raw_output.astype(np.float32).reshape(1, -1))
+        return np.concatenate(outputs, axis=0)
+
+    def _write_results(self, probs: np.ndarray, class_names) -> Path:
+        records = []
+        for row, scores in enumerate(probs.reshape(probs.shape[0], -1)):
+            predicted_index = int(np.argmax(scores))
+            records.append({
+                "row": row,
+                "predicted_index": predicted_index,
+                "predicted_class": class_names[predicted_index],
+                "scores": {
+                    class_name: float(scores[index])
+                    for index, class_name in enumerate(class_names)
+                },
+            })
+        output_path = Path(self.cfg.output_dir) / "prediction_results.json"
+        output_path.write_text(
+            json.dumps({
+                "target": self.target,
+                "model": str(self.model.model_path),
+                "prediction_path": str(self.cfg.dataset.prediction_path),
+                "predictions": records,
+            }, indent=2),
+            encoding="utf-8",
+        )
+        return output_path
+
+"""
+    predictor_method_marker = "    def _format_prediction_table(self, probs: np.ndarray, class_names):\n"
+    if "def _get_target_probs" not in predictor_text:
+        if predictor_method_marker not in predictor_text:
+            raise RuntimeError(f"Unexpected predictor methods in {predictor_path}")
+        predictor_text = predictor_text.replace(
+            predictor_method_marker, target_methods + predictor_method_marker, 1
+        )
+
+    predictor_run_old = """        interpreter = self.model
+        x = self.dataloaders["predict"]
+        class_names = list(self.cfg.dataset.class_names)
+        probs = self._get_probs(interpreter, x)
+        print(self._format_prediction_table(probs, class_names))
+"""
+    predictor_run_new = """        x = self.dataloaders["predict"]
+        class_names = list(self.cfg.dataset.class_names)
+        if self.target == "host":
+            probs = self._get_probs(self.model, x)
+        elif self.ai_runner is not None:
+            probs = self._get_target_probs(x)
+        else:
+            raise ValueError(f"Unsupported prediction target: {self.target}")
+        print(self._format_prediction_table(probs, class_names))
+        output_path = self._write_results(probs, class_names)
+        print(f"[INFO] : Prediction results saved to {output_path}")
+"""
+    if "Prediction results saved to" not in predictor_text:
+        if predictor_run_old not in predictor_text:
+            raise RuntimeError(f"Unexpected prediction entry point in {predictor_path}")
+        predictor_text = predictor_text.replace(
+            predictor_run_old, predictor_run_new, 1
+        )
+
+    parse_import_old = (
+        "parse_top_level, parse_general_section, parse_training_section, "
+        "\\\n                         check_hardware_type, parse_model_section\n"
+    )
+    parse_import_new = (
+        "parse_top_level, parse_general_section, parse_training_section, "
+        "parse_prediction_section, \\\n                         check_hardware_type, parse_model_section\n"
+    )
+    if "parse_training_section, parse_prediction_section" not in parse_config_text:
+        if parse_import_old not in parse_config_text:
+            raise RuntimeError(f"Unexpected configuration imports in {parse_config_path}")
+        parse_config_text = parse_config_text.replace(
+            parse_import_old, parse_import_new, 1
+        )
+
+    parse_prediction_block = """    # Prediction section parsing
+    if cfg.operation_mode in mode_groups.prediction:
+        if not cfg.prediction:
+            cfg.prediction = DefaultMunch.fromDict({})
+        parse_prediction_section(cfg.prediction)
+
+"""
+    parse_tools_marker = "    # Tools section parsing\n"
+    if "# Prediction section parsing" not in parse_config_text:
+        if parse_tools_marker not in parse_config_text:
+            raise RuntimeError(f"Unexpected configuration structure in {parse_config_path}")
+        parse_config_text = parse_config_text.replace(
+            parse_tools_marker, parse_prediction_block + parse_tools_marker, 1
+        )
+
+    parse_tools_old = (
+        "    if cfg.operation_mode in (mode_groups.benchmarking):\n"
+        "        parse_tools_section(cfg.tools," " \n"
+        "                            cfg.operation_mode,\n"
+        "                            cfg.hardware_type)\n"
+    )
+    parse_tools_new = """    if (
+        cfg.operation_mode in mode_groups.benchmarking
+        or (
+            cfg.operation_mode in mode_groups.prediction
+            and cfg.prediction.target != "host"
+        )
+    ):
+        parse_tools_section(cfg.tools,
+                            cfg.operation_mode,
+                            cfg.hardware_type)
+"""
+    if "cfg.prediction.target != \"host\"" not in parse_config_text:
+        if parse_tools_old not in parse_config_text:
+            raise RuntimeError(f"Unexpected tools parsing in {parse_config_path}")
+        parse_config_text = parse_config_text.replace(
+            parse_tools_old, parse_tools_new, 1
+        )
+
+    main_prediction_import_old = "from common.benchmarking import benchmark, cloud_connect\n"
+    main_prediction_import_new = """from common.benchmarking import benchmark, cloud_connect
+from common.prediction import gen_load_val_predict
+"""
+    if "from common.prediction import gen_load_val_predict" not in main_text:
+        if main_prediction_import_old not in main_text:
+            raise RuntimeError(f"Unexpected main imports in {main_path}")
+        main_text = main_text.replace(
+            main_prediction_import_old, main_prediction_import_new, 1
+        )
+
+    main_prediction_old = """    elif mode == "prediction":
+        predictor = get_predictor(cfg=configs,
+                                  model=model,
+                                  dataloaders=dataloaders)
+"""
+    main_prediction_new = """    elif mode == "prediction":
+        if configs.prediction.target != "host":
+            gen_load_val_predict(cfg=configs, model=model)
+            os.chdir(SCRIPT_DIR)
+        predictor = get_predictor(cfg=configs,
+                                  model=model,
+                                  dataloaders=dataloaders)
+"""
+    if "gen_load_val_predict(cfg=configs, model=model)" not in main_text:
+        if main_prediction_old not in main_text:
+            raise RuntimeError(f"Unexpected prediction mode in {main_path}")
+        main_text = main_text.replace(
+            main_prediction_old, main_prediction_new, 1
+        )
+
     # Upstream 4.1.1 uses a regex replacement, so Windows backslashes are
     # interpreted as escapes (for example, ``\S``). A literal replacement is
     # correct for environment-variable expansion on every platform.
@@ -259,6 +510,8 @@ def install(project_root: Path, model_zoo_dir: Path) -> None:
     registry_path.write_text(registry_text, encoding="utf-8")
     quantizer_path.write_text(quantizer_text, encoding="utf-8")
     evaluator_path.write_text(evaluator_text, encoding="utf-8")
+    predictor_path.write_text(predictor_text, encoding="utf-8")
+    parse_config_path.write_text(parse_config_text, encoding="utf-8")
     main_path.write_text(main_text, encoding="utf-8")
     config_utils_path.write_text(config_utils_text, encoding="utf-8")
     logs_utils_path.write_text(logs_utils_text, encoding="utf-8")

@@ -27,6 +27,7 @@ artifacts/
 scripts/*
 !scripts/install_model_zoo_overlay.py
 !scripts/verify_reproduction.py
+!scripts/verify_stm32n6_prediction.py
 integration/
 firmware/
 configs/stm32_model_zoo/*
@@ -37,6 +38,8 @@ configs/stm32_model_zoo/*
 !configs/stm32_model_zoo/linear_softmax_benchmarking_stm32n6_config.yaml
 !configs/stm32_model_zoo/linear_softmax_benchmarking_stm32u5_config.yaml
 !configs/stm32_model_zoo/linear_softmax_benchmarking_stm32f4_config.yaml
+!configs/stm32_model_zoo/linear_softmax_prediction_host_config.yaml
+!configs/stm32_model_zoo/linear_softmax_prediction_stm32n6_config.yaml
 docs/DEPLOYMENT_STM32N6.md
 docs/MODEL_CARD.md
 docs/RAPPORTO_INCREMENTALE_IT.md

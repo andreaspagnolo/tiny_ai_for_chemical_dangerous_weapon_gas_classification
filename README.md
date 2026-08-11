@@ -6,7 +6,8 @@ for classifying Raman spectra of TEP, DIMP, and DMMP:
 1. build a leakage-safe dataset;
 2. train, export, and test the network locally;
 3. train, quantize, and test the same network with STM32 AI Model Zoo Services;
-4. benchmark its full-INT8 deployment model on STM32N6, STM32U5, and STM32F4.
+4. benchmark its full-INT8 deployment model on STM32N6, STM32U5, and STM32F4;
+5. run six held-out Raman spectra on a physical STM32N6570-DK.
 
 The network is `Flatten(512) -> Dense(3, softmax)`, trained from random Glorot
 weights with Adam. It has 1,539 parameters and uses 1,445 training spectra:
@@ -43,7 +44,9 @@ The same Model Zoo INT8 file produced these Developer Cloud results:
 N6 is fastest, but this 1,539-parameter network is small enough that U5 and F4
 are practical alternatives with lower reported flash use. Developer Cloud
 measures hardware performance; the 100% classification accuracy is calculated
-separately on the Raman test split.
+separately on the Raman test split. Physical N6 prediction then checks the
+deployed code with two held-out spectra per class and must match all six host
+predictions.
 
 ## 1. Clone and select the project root
 
@@ -185,7 +188,29 @@ INT8 model on N6, U5, and F4 and stores each log under
 The reference runs used Developer Cloud platform 4.0.1 and STM32 backend
 12.0.1 on 6 and 10 August 2026.
 
-## 8. Final result check
+## 8. Run prediction on a physical STM32N6
+
+This step requires a Windows PC and an `STM32N6570-DK`; it cannot run through
+Developer Cloud. Install ST Edge AI Core 4.0 and STM32CubeIDE, connect the board
+through its ST-LINK USB port in development mode, and complete the one-time N6
+loader toolchain configuration from ST's
+[STM32N6 setup guide](https://stedgeai-dc.st.com/assets/embedded-docs/stneuralart_getting_started.html).
+
+In the same Anaconda Prompt and Model Zoo directory used above, set the Core
+executable path and run the host reference followed by the physical-board run:
+
+```bat
+set "STEDGEAI_PATH=C:/ST/STEdgeAI/4.0/Utilities/windows/stedgeai.exe"
+python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_prediction_host_config.yaml
+python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_prediction_stm32n6_config.yaml
+```
+
+The second command generates the N6 code, builds and flashes ST's validation
+firmware, and sends the same six preprocessed spectra to the physical board over
+the 921600-baud serial link. The expected classes, in order, are `TEP`, `TEP`,
+`DIMP`, `DIMP`, `DMMP`, and `DMMP`.
+
+## 9. Final result check
 
 After every previous command completes, run this single final check:
 
@@ -206,11 +231,14 @@ Local Linear Softmax: accuracy 99.70%, macro F1 99.70%
 Model Zoo Linear Softmax: FP32/INT8 accuracy 100.00%, macro F1 100.00%
 Training samples / parameters: 1445 / 1539 = 0.939
 Developer Cloud: N6 0.02 ms; U5 0.06 ms; F4 0.11 ms
+Physical STM32N6: 6/6 predictions match host; max score delta <value>
 ```
 
 TensorFlow floating-point details can vary across operating systems and CPU
 implementations. If predictions or reported values differ, this check fails
-instead of accepting an approximate reproduction.
+instead of accepting an approximate reproduction. The physical score delta may
+vary, but the check requires exact class agreement and no more than four INT8
+output steps (`0.015625`).
 
 ## Licence
 

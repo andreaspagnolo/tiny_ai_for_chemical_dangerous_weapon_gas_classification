@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+import sys
 
 import numpy as np
 
@@ -16,6 +17,12 @@ from raman_stm32.modeling import tflite_details
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.verify_stm32n6_prediction import verify_stm32n6_prediction
+
+
 LOCAL_ACCURACY = 0.9969879518072289
 LOCAL_MACRO_F1 = 0.9970209513356721
 TRAINING_SAMPLES = 1445
@@ -102,7 +109,7 @@ def verify_board_logs() -> None:
             raise AssertionError(f"Developer Cloud benchmark did not complete in {log_path}")
 
 
-def verify_model_zoo_candidate() -> None:
+def verify_model_zoo_candidate() -> float:
     import tensorflow as tf
 
     config = load_config(ROOT / "configs/project/pipeline.yaml")
@@ -146,16 +153,18 @@ def verify_model_zoo_candidate() -> None:
     assert details["fully_integer_io"], details
     assert details["operators"] == ["RESHAPE", "FULLY_CONNECTED", "SOFTMAX"], details
     verify_board_logs()
+    return verify_stm32n6_prediction()
 
 
 def main() -> int:
     verify_local()
-    verify_model_zoo_candidate()
+    n6_max_delta = verify_model_zoo_candidate()
     print("Reproduction verified successfully")
     print("Local Linear Softmax: accuracy 99.70%, macro F1 99.70%")
     print("Model Zoo Linear Softmax: FP32/INT8 accuracy 100.00%, macro F1 100.00%")
     print("Training samples / parameters: 1445 / 1539 = 0.939")
     print("Developer Cloud: N6 0.02 ms; U5 0.06 ms; F4 0.11 ms")
+    print(f"Physical STM32N6: 6/6 predictions match host; max score delta {n6_max_delta:.8f}")
     return 0
 
 
