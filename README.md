@@ -231,7 +231,7 @@ Local Linear Softmax: accuracy 99.70%, macro F1 99.70%
 Model Zoo Linear Softmax: FP32/INT8 accuracy 100.00%, macro F1 100.00%
 Training samples / parameters: 1445 / 1539 = 0.939
 Developer Cloud: N6 0.02 ms; U5 0.06 ms; F4 0.11 ms
-Physical STM32N6: 6/6 predictions match host; max score delta <value>
+Physical STM32N6: 6/6 predictions match host; score delta <= 0.015625
 ```
 
 TensorFlow floating-point details can vary across operating systems and CPU
