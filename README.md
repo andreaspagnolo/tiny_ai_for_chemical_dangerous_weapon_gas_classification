@@ -190,29 +190,65 @@ The reference runs used Developer Cloud platform 4.0.1 and STM32 backend
 
 ## 8. Run prediction on a physical STM32N6
 
-This step requires a Windows PC and an `STM32N6570-DK`; it cannot run through
-Developer Cloud. Install ST Edge AI Core 4.0 and STM32CubeIDE, connect the board
-through its ST-LINK USB port in development mode, and complete the one-time N6
-loader toolchain configuration from ST's
+This step requires an `STM32N6570-DK`; it cannot run through Developer Cloud.
+The [ST Edge AI Core 4.0 modular installer](https://stedgeai-dc.st.com/assets/embedded-docs/modular_installer.html)
+supports Windows, Linux, macOS Intel, and macOS Apple Silicon. Install its
+STM32 MCU and ST Neural-ART components plus STM32CubeIDE,
+connect the board through its ST-LINK USB port in development mode, and complete
+the one-time N6 loader toolchain configuration from ST's
 [STM32N6 setup guide](https://stedgeai-dc.st.com/assets/embedded-docs/stneuralart_getting_started.html).
 
-In the same Anaconda Prompt and Model Zoo directory used above, set the Core
-executable path and run the host reference followed by the physical-board run:
+In the same terminal and Model Zoo directory used above, first run the host
+reference:
+
+```bash
+python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_prediction_host_config.yaml
+```
+
+Then set the Core executable path for the current platform. These commands
+assume the displayed installation root; change only that root if a different
+one was selected in the ST installer.
+
+On Windows Anaconda Prompt:
 
 ```bat
 set "STEDGEAI_PATH=C:/ST/STEdgeAI/4.0/Utilities/windows/stedgeai.exe"
-python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_prediction_host_config.yaml
+```
+
+On Linux:
+
+```bash
+export STEDGEAI_PATH="$HOME/ST/STEdgeAI/4.0/Utilities/linux/stedgeai"
+```
+
+On macOS Apple Silicon:
+
+```bash
+export STEDGEAI_PATH="/Applications/ST/STEdgeAI/4.0/Utilities/macarm/stedgeai"
+```
+
+On macOS Intel:
+
+```bash
+export STEDGEAI_PATH="/Applications/ST/STEdgeAI/4.0/Utilities/mac/stedgeai"
+```
+
+Run the physical-board prediction on every platform with the same command:
+
+```bash
 python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_prediction_stm32n6_config.yaml
 ```
 
-The second command generates the N6 code, builds and flashes ST's validation
-firmware, and sends the same six preprocessed spectra to the physical board over
-the 921600-baud serial link. The expected classes, in order, are `TEP`, `TEP`,
-`DIMP`, `DIMP`, `DMMP`, and `DMMP`.
+The physical-board command generates the N6 code, builds and flashes ST's
+validation firmware, and sends the same six preprocessed spectra to the board
+over the 921600-baud serial link. The expected classes, in order, are `TEP`,
+`TEP`, `DIMP`, `DIMP`, `DMMP`, and `DMMP`.
 
 ## 9. Final result check
 
-After every previous command completes, run this single final check:
+After every previous command, including physical N6 prediction, completes, run
+this single final check. Without a physical-board result this check intentionally
+fails because the complete reproduction is not yet finished.
 
 ```bash
 cd ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification
