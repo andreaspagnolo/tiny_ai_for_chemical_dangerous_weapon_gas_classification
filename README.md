@@ -1,5 +1,39 @@
 # Tiny AI for Raman classification on STM32
 
+## Chemical simulants used in this study
+
+TEP, DIMP, and DMMP are organophosphorus compounds commonly used as
+lower-toxicity simulants of G-series nerve agents, including sarin (GB) and
+soman (GD), in research and defence laboratories [1, 2]. Because real nerve
+agents are extremely toxic and subject to strict international controls, these
+simulants allow researchers to develop sensors, calibrate detection instruments,
+and study protective materials under safer laboratory conditions [2].
+
+### Meaning of the abbreviations
+
+- **TEP (triethyl phosphate):** a liquid compound used commercially as a flame
+  retardant, particularly in plastics. In defence research it is used to study
+  adsorption and desorption behaviour on protective and environmental
+  materials [1, 3].
+- **DIMP (diisopropyl methylphosphonate):** a by-product, precursor, and
+  lower-toxicity simulant of sarin. It is used to study sarin-like thermal
+  decomposition and to calibrate ion-mobility spectrometers employed in warning
+  and detection systems [2, 4].
+- **DMMP (dimethyl methylphosphonate):** a colourless liquid also used
+  commercially as a flame retardant. Its molecular structure and physical
+  properties make it one of the most widely used sarin simulants for evaluating
+  environmental sensors [1, 5].
+
+### Why are samples of these substances used?
+
+1. **Sensor development:** to evaluate portable detection systems used by
+   defence and civil-protection organisations [2].
+2. **Filtration systems:** to test adsorption materials such as the activated
+   carbon used in protective filters and equipment.
+3. **Training and calibration:** to calibrate analytical instruments, including
+   gas chromatographs, ion-mobility spectrometers, and other spectrometers,
+   without exposing operators to real nerve agents [2].
+
 This repository reproduces the complete Linear Softmax neural-network workflow
 for classifying Raman spectra of TEP, DIMP, and DMMP:
 
@@ -10,11 +44,7 @@ for classifying Raman spectra of TEP, DIMP, and DMMP:
 5. run six held-out Raman spectra on a physical STM32N6570-DK.
 
 The network is `Flatten(512) -> Dense(3, softmax)`, trained from random Glorot
-weights with Adam. It has 1,539 parameters and uses 1,445 training spectra:
-`1,445 / 1,539 = 0.939` training samples per parameter. This low ratio and the
-single-source dataset make this a closed-set feasibility study, not a validated
-chemical-agent detector. Do not use it for operational, medical, or safety
-decisions.
+weights with Adam.
 
 ## Expected results
 
@@ -258,14 +288,13 @@ python scripts/verify_reproduction.py
 ```
 
 It recalculates both Model Zoo accuracies, checks all local results, validates
-the INT8 tensor/operator contract, the sample/parameter counts, and all three
-Developer Cloud logs. Exact reproduction prints:
+the INT8 tensor/operator contract and all three Developer Cloud logs. Exact
+reproduction prints:
 
 ```text
 Reproduction verified successfully
 Local Linear Softmax: accuracy 99.70%, macro F1 99.70%
 Model Zoo Linear Softmax: FP32/INT8 accuracy 100.00%, macro F1 100.00%
-Training samples / parameters: 1445 / 1539 = 0.939
 Developer Cloud: N6 0.02 ms; U5 0.06 ms; F4 0.11 ms
 Physical STM32N6: 6/6 predictions match host; score delta <= 0.015625
 ```
@@ -275,6 +304,14 @@ implementations. If predictions or reported values differ, this check fails
 instead of accepting an approximate reproduction. The physical score delta may
 vary, but the check requires exact class agreement and no more than four INT8
 output steps (`0.015625`).
+
+## References
+
+1. [Diisopropyl Methylphosphonate — ScienceDirect Topics](https://www.sciencedirect.com/topics/chemistry/diisopropyl-methylphosphonate)
+2. [Trace Detection of DIMP Using Ion Mobility Spectrometry or GC-MS](https://pmc.ncbi.nlm.nih.gov/articles/PMC11861048/)
+3. [Triethyl phosphate–dimethylsulfoxide as a green solvent mixture for solid-phase peptide synthesis](https://www.tandfonline.com/doi/full/10.1080/17518253.2024.2438068)
+4. [Ignition delay time and laminar flame speed measurements of mixtures containing DIMP](https://www.researchgate.net/figure/Evolution-of-a-t-max-DIMP-DMMP-8-DEMP-9-and-TEP-7-and-b-t-ign-DIMP-and_fig5_341081951)
+5. [Dimethyl methylphosphonate](https://en.wikipedia.org/wiki/Dimethyl_methylphosphonate)
 
 ## Licence
 
