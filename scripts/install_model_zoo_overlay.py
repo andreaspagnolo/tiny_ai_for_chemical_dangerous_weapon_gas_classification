@@ -577,6 +577,27 @@ from common.prediction import gen_load_val_predict
             main_prediction_old, main_prediction_new, 1
         )
 
+    # The ISPU cloud backend rejects the MCU-only optimization option. Model
+    # Zoo 4.1.1 changes an empty YAML value to "balanced", so remove the key
+    # after configuration parsing and immediately before benchmarking.
+    main_benchmark_old = """    elif mode == 'benchmarking':
+        benchmark(cfg=configs, model_path_to_benchmark=model.model_path)
+"""
+    main_benchmark_new = """    elif mode == 'benchmarking':
+        ispu_targets = ("LSM6DSO16IS", "ISM330IS")
+        if configs.benchmarking.board in ispu_targets:
+            configs.tools.stedgeai.pop("optimization", None)
+            print("[INFO] : Omitted MCU-only optimization for the ISPU target.")
+        benchmark(cfg=configs, model_path_to_benchmark=model.model_path)
+"""
+    if "Omitted MCU-only optimization for the ISPU target" not in main_text:
+        if "ispu_sensors = ['LSM6DSO16IS', 'ISM330IS']" not in main_text:
+            if main_benchmark_old not in main_text:
+                raise RuntimeError(f"Unexpected benchmarking mode in {main_path}")
+            main_text = main_text.replace(
+                main_benchmark_old, main_benchmark_new, 1
+            )
+
     # Upstream 4.1.1 uses a regex replacement, so Windows backslashes are
     # interpreted as escapes (for example, ``\S``). A literal replacement is
     # correct for environment-variable expansion on every platform.

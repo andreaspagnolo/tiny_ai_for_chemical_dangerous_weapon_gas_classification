@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 import json
 from pathlib import Path
 import re
@@ -27,7 +28,8 @@ LOCAL_ACCURACY = 0.9969879518072289
 LOCAL_MACRO_F1 = 0.9970209513356721
 TRAINING_SAMPLES = 1445
 MODEL_PARAMETERS = 1539
-BOARD_RESULTS = {
+# Golden references used only for validation. The reported values are parsed from logs.
+EXPECTED_BOARD_RESULTS = {
     "stm32n6": {
         "board": "STM32N6570-DK",
         "cycles": "0.017",
@@ -48,6 +50,13 @@ BOARD_RESULTS = {
         "inference_ms": "0.11",
         "ram_kib": "2.03",
         "flash_kib": "7.92",
+    },
+    "st_ispu": {
+        "board": "LSM6DSO16IS",
+        "cycles": "0.055",
+        "inference_ms": "10.97",
+        "ram_kib": "1.54",
+        "flash_kib": "1.51",
     },
 }
 
@@ -75,41 +84,72 @@ def verify_local() -> None:
     )
 
 
-def _assert_log_metric(log: str, labels: tuple[str, ...], value: str, unit: str) -> None:
+def _extract_log_metric(log: str, labels: tuple[str, ...], unit: str) -> str:
     label_pattern = "(?:" + "|".join(re.escape(label) for label in labels) + ")"
-    pattern = rf"{label_pattern}\s*:\s*{re.escape(value)}\s*\(?{re.escape(unit)}\)?"
-    if re.search(pattern, log, flags=re.IGNORECASE) is None:
+    number_pattern = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
+    pattern = (
+        rf"{label_pattern}\s*:\s*(?P<value>{number_pattern})"
+        rf"\s*\(?{re.escape(unit)}\)?"
+    )
+    match = re.search(pattern, log, flags=re.IGNORECASE)
+    if match is None:
         raise AssertionError(
-            f"Developer Cloud log does not report {labels[0]} = {value} {unit}"
+            f"Developer Cloud log does not report {labels[0]} in {unit}"
+        )
+    return match.group("value")
+
+
+def _extract_board(log: str) -> str:
+    patterns = (
+        r"Benchmarking board\s*:\s*(?P<board>[^\s,]+)",
+        r"Starting the model benchmark on target\s+(?P<board>[^\s,]+)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, log, flags=re.IGNORECASE)
+        if match is not None:
+            return match.group("board")
+    raise AssertionError("Developer Cloud log does not report the benchmark target")
+
+
+def _assert_expected_log_value(actual: str, expected: str, label: str) -> None:
+    if Decimal(actual) != Decimal(expected):
+        raise AssertionError(
+            f"Developer Cloud log reports {label} = {actual}, expected {expected}"
         )
 
 
-def verify_board_logs() -> None:
-    for family, expected in BOARD_RESULTS.items():
+def verify_board_logs(root: Path = ROOT) -> dict[str, dict[str, str]]:
+    actual_results = {}
+    for family, expected in EXPECTED_BOARD_RESULTS.items():
         log_path = (
-            ROOT
+            root
             / "artifacts/model_zoo/linear_softmax"
             / f"benchmarking_{family}/stm32ai_main.log"
         )
         log = log_path.read_text(encoding="utf-8")
-        if expected["board"] not in log:
+        actual = {
+            "board": _extract_board(log),
+            "cycles": _extract_log_metric(log, ("Cycles", "Number of cycles"), "M"),
+            "inference_ms": _extract_log_metric(
+                log, ("Inference_time", "Inference Time"), "ms"
+            ),
+            "ram_kib": _extract_log_metric(log, ("Total RAM",), "KiB"),
+            "flash_kib": _extract_log_metric(log, ("Total Flash",), "KiB"),
+        }
+        if actual["board"] != expected["board"]:
             raise AssertionError(
-                f"Developer Cloud log {log_path} does not name {expected['board']}"
+                f"Developer Cloud log {log_path} reports board {actual['board']}, "
+                f"expected {expected['board']}"
             )
-        _assert_log_metric(log, ("Cycles", "Number of cycles"), expected["cycles"], "M")
-        _assert_log_metric(
-            log,
-            ("Inference_time", "Inference Time"),
-            expected["inference_ms"],
-            "ms",
-        )
-        _assert_log_metric(log, ("Total RAM",), expected["ram_kib"], "KiB")
-        _assert_log_metric(log, ("Total Flash",), expected["flash_kib"], "KiB")
+        for key in ("cycles", "inference_ms", "ram_kib", "flash_kib"):
+            _assert_expected_log_value(actual[key], expected[key], key)
         if "Benchmark complete." not in log and "operation finished: benchmarking" not in log:
             raise AssertionError(f"Developer Cloud benchmark did not complete in {log_path}")
+        actual_results[family] = actual
+    return actual_results
 
 
-def verify_model_zoo_candidate() -> float:
+def verify_model_zoo_candidate() -> tuple[float, dict[str, dict[str, str]]]:
     import tensorflow as tf
 
     config = load_config(ROOT / "configs/project/pipeline.yaml")
@@ -152,17 +192,23 @@ def verify_model_zoo_candidate() -> float:
     assert details["input"]["shape_signature"] == [1, 1, 512, 1], details
     assert details["fully_integer_io"], details
     assert details["operators"] == ["RESHAPE", "FULLY_CONNECTED", "SOFTMAX"], details
-    verify_board_logs()
-    return verify_stm32n6_prediction()
+    board_results = verify_board_logs()
+    return verify_stm32n6_prediction(), board_results
 
 
 def main() -> int:
     verify_local()
-    verify_model_zoo_candidate()
+    _, board_results = verify_model_zoo_candidate()
     print("Reproduction verified successfully")
     print("Local Linear Softmax: accuracy 99.70%, macro F1 99.70%")
     print("Model Zoo Linear Softmax: FP32/INT8 accuracy 100.00%, macro F1 100.00%")
-    print("Developer Cloud: N6 0.02 ms; U5 0.06 ms; F4 0.11 ms")
+    print("Developer Cloud benchmarks (values parsed from logs):")
+    for result in board_results.values():
+        print(
+            f"  {result['board']}: {result['inference_ms']} ms, "
+            f"{result['cycles']} M cycles, {result['ram_kib']} KiB RAM, "
+            f"{result['flash_kib']} KiB Flash"
+        )
     print("Physical STM32N6: 6/6 predictions match host; score delta <= 0.015625")
     return 0
 

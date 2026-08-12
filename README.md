@@ -40,7 +40,8 @@ for classifying Raman spectra of TEP, DIMP, and DMMP:
 1. build a leakage-safe dataset;
 2. train, export, and test the network locally;
 3. train, quantize, and test the same network with STM32 AI Model Zoo Services;
-4. benchmark its full-INT8 deployment model on STM32N6, STM32U5, and STM32F4;
+4. benchmark its full-INT8 deployment model on STM32N6, STM32U5, STM32F4,
+   and the LSM6DSO16IS sensor ISPU;
 5. run six held-out Raman spectra on a physical STM32N6570-DK.
 
 The network is `Flatten(512) -> Dense(3, softmax)`, trained from random Glorot
@@ -70,13 +71,15 @@ The same Model Zoo INT8 file produced these Developer Cloud results:
 | STM32N6 | `STM32N6570-DK` | 0.02 ms | 0.017 M | 0.53 KiB | 24.35 KiB |
 | STM32U5 | `B-U585I-IOT02A` | 0.06 ms | 0.01 M | 2.03 KiB | 7.94 KiB |
 | STM32F4 | `NUCLEO-F401RE` | 0.11 ms | 0.009 M | 2.03 KiB | 7.92 KiB |
+| ST ISPU | `LSM6DSO16IS` | 10.97 ms | 0.055 M | 1.54 KiB | 1.51 KiB |
 
-N6 is fastest, but this 1,539-parameter network is small enough that U5 and F4
-are practical alternatives with lower reported flash use. Developer Cloud
-measures hardware performance; the 100% classification accuracy is calculated
-separately on the Raman test split. Physical N6 prediction then checks the
-deployed code with two held-out spectra per class and must match all six host
-predictions.
+N6 is fastest, but this 1,539-parameter network is small enough for all four
+targets. The ISPU result establishes model compatibility and execution cost on
+the sensor processing core; it does not mean that the inertial sensor itself
+acquires Raman spectra. Developer Cloud measures hardware performance, while
+the 100% classification accuracy is calculated separately on the Raman test
+split. Physical N6 prediction then checks the deployed code with two held-out
+spectra per class and must match all six host predictions.
 
 ## 1. Clone and select the project root
 
@@ -172,8 +175,9 @@ The installer fetches STM32 AI Model Zoo Services `v4.1.1` at exact commit
 The official service itself is not copied into this repository because it
 provides the Developer Cloud client and board support; all project-specific
 model code, configurations, compatibility fixes, and commands are included
-here. The overlay also fixes the v4.1.1 Windows path/MLflow issues and prevents
-an unrelated global ClearML configuration from uploading project artifacts.
+here. The overlay also fixes the v4.1.1 Windows path/MLflow issues, removes the
+unsupported MCU optimization option for ISPU benchmarks, and prevents an
+unrelated global ClearML configuration from uploading project artifacts.
 
 ## 6. Reproduce the Model Zoo 100% result
 
@@ -202,7 +206,7 @@ artifacts/model_zoo/linear_softmax/quantization/quantized_models/quantized_model
 It has signed INT8 input/output, static input shape `[1, 1, 512, 1]`, and only
 `RESHAPE`, `FULLY_CONNECTED`, and `SOFTMAX` operators.
 
-## 7. Reproduce the three Developer Cloud benchmarks
+## 7. Reproduce the four Developer Cloud benchmarks
 
 After completing the browser activation in section 4, run:
 
@@ -210,13 +214,16 @@ After completing the browser activation in section 4, run:
 python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_benchmarking_stm32n6_config.yaml
 python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_benchmarking_stm32u5_config.yaml
 python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_benchmarking_stm32f4_config.yaml
+python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_benchmarking_st_ispu_config.yaml
 ```
 
 Enter the myST credentials only when prompted. The command benchmarks the same
-INT8 model on N6, U5, and F4 and stores each log under
+INT8 model on N6, U5, F4, and the LSM6DSO16IS ISPU and stores each log under
 `artifacts/model_zoo/linear_softmax/benchmarking_<family>/stm32ai_main.log`.
-The reference runs used Developer Cloud platform 4.0.1 and STM32 backend
-12.0.1 on 6 and 10 August 2026.
+For the ISPU run, the overlay automatically removes the unsupported
+`optimization` field after Model Zoo has parsed the configuration; no manual
+edit of `stm32ai_main.py` is required. The reference runs used Developer Cloud
+platform 4.0.1 and STM32 backend 12.0.1 on 6, 10, and 12 August 2026.
 
 ## 8. Run prediction on a physical STM32N6
 
@@ -294,14 +301,19 @@ python scripts/verify_reproduction.py
 ```
 
 It recalculates both Model Zoo accuracies, checks all local results, validates
-the INT8 tensor/operator contract and all three Developer Cloud logs. Exact
-reproduction prints:
+the INT8 tensor/operator contract and all four Developer Cloud logs. The
+benchmark summary is parsed from those logs rather than embedded in the
+verification message. Exact reproduction prints:
 
 ```text
 Reproduction verified successfully
 Local Linear Softmax: accuracy 99.70%, macro F1 99.70%
 Model Zoo Linear Softmax: FP32/INT8 accuracy 100.00%, macro F1 100.00%
-Developer Cloud: N6 0.02 ms; U5 0.06 ms; F4 0.11 ms
+Developer Cloud benchmarks (values parsed from logs):
+  STM32N6570-DK: 0.02 ms, 0.017 M cycles, 0.53 KiB RAM, 24.35 KiB Flash
+  B-U585I-IOT02A: 0.06 ms, 0.01 M cycles, 2.03 KiB RAM, 7.94 KiB Flash
+  NUCLEO-F401RE: 0.11 ms, 0.009 M cycles, 2.03 KiB RAM, 7.92 KiB Flash
+  LSM6DSO16IS: 10.97 ms, 0.055 M cycles, 1.54 KiB RAM, 1.51 KiB Flash
 Physical STM32N6: 6/6 predictions match host; score delta <= 0.015625
 ```
 
