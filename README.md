@@ -272,7 +272,13 @@ python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon
 The physical-board command generates the N6 code, builds and flashes ST's
 validation firmware, and sends the same six preprocessed spectra to the board
 over the 921600-baud serial link. The expected classes, in order, are `TEP`,
-`TEP`, `DIMP`, `DIMP`, `DMMP`, and `DMMP`.
+`TEP`, `DIMP`, `DIMP`, `DMMP`, and `DMMP`. Both prediction commands display
+ground truth, prediction, and correctness for every sample, followed by the
+expected summary:
+
+```text
+[INFO] : Prediction accuracy against ground truth: 6/6 (100.00%)
+```
 
 ## 9. Final result check
 

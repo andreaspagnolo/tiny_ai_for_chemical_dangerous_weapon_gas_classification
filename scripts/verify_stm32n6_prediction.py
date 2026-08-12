@@ -37,6 +37,15 @@ def _load_predictions(path: Path, expected_target: str) -> list[dict]:
             f"{path}: expected {len(EXPECTED_CLASSES)} predictions, obtained "
             f"{len(predictions) if isinstance(predictions, list) else 'invalid JSON'}"
         )
+    ground_truth = [item.get("ground_truth_class") for item in predictions]
+    if ground_truth != EXPECTED_CLASSES:
+        raise AssertionError(
+            f"{path}: expected ground truth {EXPECTED_CLASSES}, obtained {ground_truth}"
+        )
+    for item in predictions:
+        expected_correct = item.get("predicted_class") == item.get("ground_truth_class")
+        if item.get("correct") != expected_correct:
+            raise AssertionError(f"{path}: invalid correctness flag in row {item.get('row')}")
     return predictions
 
 

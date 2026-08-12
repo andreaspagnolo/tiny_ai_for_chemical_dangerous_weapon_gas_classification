@@ -21,8 +21,11 @@ def _write(path: Path, target: str, score_shift: float = 0.0, last_class: str | 
         predictions.append(
             {
                 "row": row,
+                "ground_truth_index": CLASS_NAMES.index(class_name),
+                "ground_truth_class": class_name,
                 "predicted_index": CLASS_NAMES.index(predicted_class),
                 "predicted_class": predicted_class,
+                "correct": predicted_class == class_name,
                 "scores": scores,
             }
         )

@@ -54,6 +54,9 @@ def test_overlay_contains_the_required_cross_platform_and_privacy_fixes():
     assert "gen_load_val_predict(cfg=configs, model=model)" in text
     assert "self.ai_runner = ai_runner_interp" in text
     assert "parse_prediction_section(cfg.prediction)" in text
+    assert "Prediction accuracy against ground truth" in text
+    assert '"ground_truth_class":' in text
+    assert "prediction_ground_truth.csv" in text
 
 
 def test_prediction_configs_share_model_input_and_preprocessing():

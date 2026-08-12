@@ -335,6 +335,107 @@ from common.utils import ai_runner_interp
             predictor_method_marker, target_methods + predictor_method_marker, 1
         )
 
+    ground_truth_methods = '''    def _load_ground_truth(self, class_names) -> np.ndarray:
+        labels_path = Path(self.cfg.dataset.prediction_path).with_name(
+            "prediction_ground_truth.csv"
+        )
+        if not labels_path.is_file():
+            raise FileNotFoundError(
+                f"Missing prediction ground truth: {labels_path}. "
+                "Run `raman-stm32 prepare` again."
+            )
+        labels = np.loadtxt(labels_path, dtype=str, delimiter=",", ndmin=1)
+        try:
+            ground_truth = np.asarray(
+                [class_names.index(str(label)) for label in labels], dtype=np.int32
+            )
+        except ValueError as error:
+            raise ValueError(
+                f"Unknown class in prediction ground truth {labels_path}: {error}"
+            ) from error
+        return ground_truth
+
+    def _format_ground_truth_table(
+        self, probs: np.ndarray, class_names, ground_truth: np.ndarray
+    ) -> str:
+        scores_by_sample = probs.reshape(probs.shape[0], -1)
+        rows = []
+        for row, scores in enumerate(scores_by_sample):
+            predicted_index = int(np.argmax(scores))
+            truth_index = int(ground_truth[row])
+            rows.append([
+                row + 1,
+                class_names[truth_index],
+                class_names[predicted_index],
+                "yes" if predicted_index == truth_index else "no",
+                np.round(scores, 2),
+            ])
+        return tabulate(
+            rows,
+            headers=["Sample", "Ground truth", "Prediction", "Correct", "Scores"],
+            tablefmt="grid",
+            showindex=False,
+        )
+
+'''
+    ground_truth_marker = "    def _get_target_probs(self, x: np.ndarray) -> np.ndarray:\n"
+    if "def _load_ground_truth" not in predictor_text:
+        if ground_truth_marker not in predictor_text:
+            raise RuntimeError(f"Unexpected target predictor methods in {predictor_path}")
+        predictor_text = predictor_text.replace(
+            ground_truth_marker, ground_truth_methods + ground_truth_marker, 1
+        )
+
+    write_signature_old = "    def _write_results(self, probs: np.ndarray, class_names) -> Path:\n"
+    write_signature_new = (
+        "    def _write_results(\n"
+        "        self, probs: np.ndarray, class_names, ground_truth: np.ndarray\n"
+        "    ) -> Path:\n"
+    )
+    if write_signature_old in predictor_text:
+        predictor_text = predictor_text.replace(
+            write_signature_old, write_signature_new, 1
+        )
+
+    write_record_old = '''        for row, scores in enumerate(probs.reshape(probs.shape[0], -1)):
+            predicted_index = int(np.argmax(scores))
+            records.append({
+                "row": row,
+                "predicted_index": predicted_index,
+                "predicted_class": class_names[predicted_index],
+                "scores": {
+'''
+    write_record_new = '''        for row, scores in enumerate(probs.reshape(probs.shape[0], -1)):
+            predicted_index = int(np.argmax(scores))
+            ground_truth_index = int(ground_truth[row])
+            records.append({
+                "row": row,
+                "ground_truth_index": ground_truth_index,
+                "ground_truth_class": class_names[ground_truth_index],
+                "predicted_index": predicted_index,
+                "predicted_class": class_names[predicted_index],
+                "correct": predicted_index == ground_truth_index,
+                "scores": {
+'''
+    if '"ground_truth_class":' not in predictor_text:
+        if write_record_old not in predictor_text:
+            raise RuntimeError(f"Unexpected prediction JSON records in {predictor_path}")
+        predictor_text = predictor_text.replace(write_record_old, write_record_new, 1)
+
+    write_summary_old = '''                "prediction_path": str(self.cfg.dataset.prediction_path),
+                "predictions": records,
+'''
+    write_summary_new = '''                "prediction_path": str(self.cfg.dataset.prediction_path),
+                "correct": int(sum(record["correct"] for record in records)),
+                "total": len(records),
+                "accuracy": float(np.mean([record["correct"] for record in records])),
+                "predictions": records,
+'''
+    if '"accuracy": float(np.mean' not in predictor_text:
+        if write_summary_old not in predictor_text:
+            raise RuntimeError(f"Unexpected prediction JSON summary in {predictor_path}")
+        predictor_text = predictor_text.replace(write_summary_old, write_summary_new, 1)
+
     predictor_run_old = """        interpreter = self.model
         x = self.dataloaders["predict"]
         class_names = list(self.cfg.dataset.class_names)
@@ -358,6 +459,37 @@ from common.utils import ai_runner_interp
             raise RuntimeError(f"Unexpected prediction entry point in {predictor_path}")
         predictor_text = predictor_text.replace(
             predictor_run_old, predictor_run_new, 1
+        )
+
+    predictor_run_ground_truth = """        x = self.dataloaders["predict"]
+        class_names = list(self.cfg.dataset.class_names)
+        ground_truth = self._load_ground_truth(class_names)
+        if len(ground_truth) != len(x):
+            raise ValueError(
+                f"Prediction samples/ground-truth mismatch: {len(x)} != {len(ground_truth)}"
+            )
+        if self.target == "host":
+            probs = self._get_probs(self.model, x)
+        elif self.ai_runner is not None:
+            probs = self._get_target_probs(x)
+        else:
+            raise ValueError(f"Unsupported prediction target: {self.target}")
+        print(self._format_ground_truth_table(probs, class_names, ground_truth))
+        predicted = np.argmax(probs.reshape(probs.shape[0], -1), axis=1)
+        correct = int(np.sum(predicted == ground_truth))
+        accuracy = correct / len(ground_truth)
+        print(
+            f"[INFO] : Prediction accuracy against ground truth: "
+            f"{correct}/{len(ground_truth)} ({accuracy:.2%})"
+        )
+        output_path = self._write_results(probs, class_names, ground_truth)
+        print(f"[INFO] : Prediction results saved to {output_path}")
+"""
+    if "Prediction accuracy against ground truth" not in predictor_text:
+        if predictor_run_new not in predictor_text:
+            raise RuntimeError(f"Unexpected patched prediction entry point in {predictor_path}")
+        predictor_text = predictor_text.replace(
+            predictor_run_new, predictor_run_ground_truth, 1
         )
 
     parse_import_old = (

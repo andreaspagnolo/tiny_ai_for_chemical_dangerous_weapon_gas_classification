@@ -259,6 +259,15 @@ def prepare_dataset(config: dict[str, Any]) -> dict[str, Any]:
             prediction_rows.append(int(indices[0]))
     prediction_rows = np.asarray(prediction_rows, dtype=np.int64)
     _save_model_zoo_csv(processed_dir / "prediction.csv", payload["x_test"][prediction_rows], None)
+    prediction_labels = payload["y_test"][prediction_rows]
+    pd.Series(
+        [CLASS_NAMES[int(label)] for label in prediction_labels],
+        name="ground_truth",
+    ).to_csv(
+        processed_dir / "prediction_ground_truth.csv",
+        index=False,
+        header=False,
+    )
 
     np.savez_compressed(processed_dir / "dataset.npz", **payload)
     metadata.to_csv(processed_dir / "metadata.csv", index=False)
