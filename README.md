@@ -70,6 +70,34 @@ using approximately one seventh of the parameters of either convolutional
 alternative. In this experiment, the added CNN and TCN complexity did not
 improve generalization to the two held-out concentrations.
 
+#### Optional TFLite graph inspection with Netron
+
+After completing section 6, the selected INT8 deployment model can optionally
+be inspected with [Netron](https://github.com/lutzroeder/netron). This is not
+required to reproduce or verify the results. Install the pinned viewer in the
+`raman-local` environment:
+
+```bash
+conda activate raman-local
+python -m pip install netron==9.1.8
+```
+
+On macOS/Linux, open the model with:
+
+```bash
+netron "$RAMAN_PROJECT_ROOT/artifacts/model_zoo/linear_softmax/quantization/quantized_models/quantized_model.tflite"
+```
+
+On Windows Anaconda Prompt, use:
+
+```bat
+netron "%RAMAN_PROJECT_ROOT%/artifacts/model_zoo/linear_softmax/quantization/quantized_models/quantized_model.tflite"
+```
+
+The graph must show signed INT8 input/output, static input shape
+`[1, 1, 512, 1]`, and the `RESHAPE`, `FULLY_CONNECTED`, and `SOFTMAX`
+operators.
+
 ### Selected-model representations
 
 | Workflow | Model | Accuracy | Macro F1 |
@@ -208,16 +236,41 @@ cd ../stm32ai-modelzoo-services/arc_fault_detection
 ```
 
 The following four commands respectively train a new Keras checkpoint, test
-the FP32 model, convert it to full INT8, and test the INT8 model:
+the FP32 model, convert it to full INT8, and test the INT8 model.
+
+On macOS/Linux:
 
 ```bash
-python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_training_config.yaml
-python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_evaluation_float_config.yaml
-python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_quantization_config.yaml
-python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_evaluation_int8_config.yaml
+# Training
+python stm32ai_main.py --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" --config-name linear_softmax_training_config.yaml
+
+# FP32 model evaluation
+python stm32ai_main.py --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" --config-name linear_softmax_evaluation_float_config.yaml
+
+# Full-INT8 quantization
+python stm32ai_main.py --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" --config-name linear_softmax_quantization_config.yaml
+
+# INT8 model evaluation
+python stm32ai_main.py --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" --config-name linear_softmax_evaluation_int8_config.yaml
 ```
 
-The deployment file is written to:
+On Windows Anaconda Prompt:
+
+```bat
+REM Training
+python stm32ai_main.py --config-path "%RAMAN_PROJECT_ROOT%/configs/stm32_model_zoo" --config-name linear_softmax_training_config.yaml
+
+REM FP32 model evaluation
+python stm32ai_main.py --config-path "%RAMAN_PROJECT_ROOT%/configs/stm32_model_zoo" --config-name linear_softmax_evaluation_float_config.yaml
+
+REM Full-INT8 quantization
+python stm32ai_main.py --config-path "%RAMAN_PROJECT_ROOT%/configs/stm32_model_zoo" --config-name linear_softmax_quantization_config.yaml
+
+REM INT8 model evaluation
+python stm32ai_main.py --config-path "%RAMAN_PROJECT_ROOT%/configs/stm32_model_zoo" --config-name linear_softmax_evaluation_int8_config.yaml
+```
+
+The deployment file is written under the project root at:
 
 ```text
 artifacts/model_zoo/linear_softmax/quantization/quantized_models/quantized_model.tflite
@@ -228,17 +281,28 @@ It has signed INT8 input/output, static input shape `[1, 1, 512, 1]`, and only
 
 ## 7. Reproduce the four Developer Cloud benchmarks
 
-After completing the browser activation in section 4, run:
+After completing the browser activation in section 4, run the four benchmarks.
+
+On macOS/Linux:
 
 ```bash
-python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_benchmarking_stm32n6_config.yaml
-python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_benchmarking_stm32u5_config.yaml
-python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_benchmarking_stm32f4_config.yaml
-python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_benchmarking_st_ispu_config.yaml
+python stm32ai_main.py --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" --config-name linear_softmax_benchmarking_stm32n6_config.yaml
+python stm32ai_main.py --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" --config-name linear_softmax_benchmarking_stm32u5_config.yaml
+python stm32ai_main.py --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" --config-name linear_softmax_benchmarking_stm32f4_config.yaml
+python stm32ai_main.py --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" --config-name linear_softmax_benchmarking_st_ispu_config.yaml
 ```
 
-Enter the myST credentials only when prompted. The command benchmarks the same
-INT8 model on N6, U5, F4, and the LSM6DSO16IS ISPU and stores each log under
+On Windows Anaconda Prompt:
+
+```bat
+python stm32ai_main.py --config-path "%RAMAN_PROJECT_ROOT%/configs/stm32_model_zoo" --config-name linear_softmax_benchmarking_stm32n6_config.yaml
+python stm32ai_main.py --config-path "%RAMAN_PROJECT_ROOT%/configs/stm32_model_zoo" --config-name linear_softmax_benchmarking_stm32u5_config.yaml
+python stm32ai_main.py --config-path "%RAMAN_PROJECT_ROOT%/configs/stm32_model_zoo" --config-name linear_softmax_benchmarking_stm32f4_config.yaml
+python stm32ai_main.py --config-path "%RAMAN_PROJECT_ROOT%/configs/stm32_model_zoo" --config-name linear_softmax_benchmarking_st_ispu_config.yaml
+```
+
+Enter the myST credentials only when prompted. These commands benchmark the same
+INT8 model on N6, U5, F4, and the LSM6DSO16IS ISPU and store each log under
 `artifacts/model_zoo/linear_softmax/benchmarking_<family>/stm32ai_main.log`.
 For the ISPU run, the overlay automatically removes the unsupported
 `optimization` field after Model Zoo has parsed the configuration; no manual
@@ -256,10 +320,18 @@ the one-time N6 loader toolchain configuration from ST's
 [STM32N6 setup guide](https://stedgeai-dc.st.com/assets/embedded-docs/stneuralart_getting_started.html).
 
 In the same terminal and Model Zoo directory used above, first run the host
-reference:
+reference.
+
+On macOS/Linux:
 
 ```bash
-python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_prediction_host_config.yaml
+python stm32ai_main.py --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" --config-name linear_softmax_prediction_host_config.yaml
+```
+
+On Windows Anaconda Prompt:
+
+```bat
+python stm32ai_main.py --config-path "%RAMAN_PROJECT_ROOT%/configs/stm32_model_zoo" --config-name linear_softmax_prediction_host_config.yaml
 ```
 
 Then set the Core executable path for the current platform. These commands
@@ -290,10 +362,18 @@ On macOS Intel:
 export STEDGEAI_PATH="/Applications/ST/STEdgeAI/4.0/Utilities/mac/stedgeai"
 ```
 
-Run the physical-board prediction on every platform with the same command:
+Run the physical-board prediction after setting `STEDGEAI_PATH`.
+
+On macOS/Linux:
 
 ```bash
-python stm32ai_main.py --config-path ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification/configs/stm32_model_zoo --config-name linear_softmax_prediction_stm32n6_config.yaml
+python stm32ai_main.py --config-path "$RAMAN_PROJECT_ROOT/configs/stm32_model_zoo" --config-name linear_softmax_prediction_stm32n6_config.yaml
+```
+
+On Windows Anaconda Prompt:
+
+```bat
+python stm32ai_main.py --config-path "%RAMAN_PROJECT_ROOT%/configs/stm32_model_zoo" --config-name linear_softmax_prediction_stm32n6_config.yaml
 ```
 
 The physical-board command generates the N6 code, builds and flashes ST's
