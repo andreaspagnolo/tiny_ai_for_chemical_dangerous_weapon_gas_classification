@@ -26,6 +26,7 @@ mlruns/
 artifacts/
 scripts/*
 !scripts/install_model_zoo_overlay.py
+!scripts/ispu_validation.py
 !scripts/verify_reproduction.py
 !scripts/verify_stm32n6_prediction.py
 integration/

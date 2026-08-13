@@ -42,7 +42,8 @@ for classifying Raman spectra of TEP, DIMP, and DMMP:
 3. train, quantize, and test the same network with STM32 AI Model Zoo Services;
 4. benchmark its full-INT8 deployment model on STM32N6, STM32U5, STM32F4,
    and the LSM6DSO16IS sensor ISPU;
-5. run six held-out Raman spectra on a physical STM32N6570-DK.
+5. run the same six held-out Raman spectra on a physical STM32N6570-DK and
+   LSM6DSO16IS ISPU.
 
 The network is `Flatten(512) -> Dense(3, softmax)`, trained from random Glorot
 weights with Adam.
@@ -287,11 +288,100 @@ expected summary:
 [INFO] : Prediction accuracy against ground truth: 6/6 (100.00%)
 ```
 
-## 9. Final result check
+## 9. Validate prediction on a physical LSM6DSO16IS
 
-After every previous command, including physical N6 prediction, completes, run
-this single final check. Without a physical-board result this check intentionally
-fails because the complete reproduction is not yet finished.
+This validation injects the same six already-preprocessed spectra into the
+ISPU. The Nucleo is only the communication bridge between the PC and the
+LSM6DSO16IS; the neural-network inference runs on the sensor's ISPU. This does
+not make the inertial sensor a Raman acquisition device.
+
+Install ST Edge AI Core 4.0, the
+[ISPU Toolchain](https://www.st.com/en/development-tools/ispu-toolchain.html)
+1.5.0 or newer, GNU Make, and
+[STM32CubeProgrammer](https://www.st.com/en/development-tools/stm32cubeprog.html).
+The ISPU Toolchain `bin` directory must contain `stred-gcc`. ST documents the
+same physical validation flow in its
+[on-target ISPU guide](https://stm32ai-cs.st.com/assets/embedded-docs/ispu_on_target_validation.html).
+
+### Prepare and validate without the physical sensor
+
+Return to the project root, activate `raman-local`, and create the deterministic
+NPZ containing the six inputs and their one-hot ground truth:
+
+```bash
+cd ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification
+conda deactivate
+conda activate raman-local
+python scripts/ispu_validation.py prepare
+```
+
+Set `STEDGEAI_PATH` as shown in section 8 and validate the generated ISPU C
+implementation on the PC:
+
+```bash
+python scripts/ispu_validation.py host
+```
+
+This step must report `ISPU host accuracy against ground truth: 6/6 (100.00%)`.
+It can be completed without the Nucleo or sensor.
+
+### Flash once and validate on Danilo's physical sensor
+
+Clone the exact revision of ST's ISPU support repository next to this project:
+
+```bash
+git clone https://github.com/STMicroelectronics/st-mems-ispu.git ../st-mems-ispu
+git -C ../st-mems-ispu checkout 03149889edc95f0a94177be127b8cb64f7d1716a
+```
+
+On Windows Anaconda Prompt, set the three installed tool locations:
+
+```bat
+set "STEDGEAI_PATH=C:/ST/STEdgeAI_4.0/4.0/Utilities/windows/stedgeai.exe"
+set "ISPU_TOOLCHAIN_BIN=C:/ST/ISPU-Toolchain/bin"
+set "STM32_PROGRAMMER_CLI=C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe"
+```
+
+On Linux or macOS, keep `STEDGEAI_PATH` from section 8 and expose the two
+installed command directories (replace only their installation roots):
+
+```bash
+export ISPU_TOOLCHAIN_BIN="/path/to/ISPU-Toolchain/bin"
+export STM32_PROGRAMMER_CLI="/path/to/STM32CubeProgrammer/bin/STM32_Programmer_CLI"
+```
+
+Connect a `NUCLEO-F401RE` or `NUCLEO-U575ZI-Q` through ST-LINK. The simplest
+sensor expansion for this exact test is the `X-NUCLEO-IKS4A1`, which contains
+the LSM6DSO16IS; ST's pinned
+[bridge-firmware instructions](https://github.com/STMicroelectronics/st-mems-ispu/blob/03149889edc95f0a94177be127b8cb64f7d1716a/host_firmware/nucleo_ispu_stedgeai_validate/README.md)
+list the other supported expansion/adapter combinations and required jumper
+positions. For `NUCLEO-F401RE`, flash ST's prebuilt validation bridge once and
+run the physical validation:
+
+```bash
+python scripts/ispu_validation.py flash --board nucleo-f401re --ispu-repository ../st-mems-ispu
+python scripts/ispu_validation.py target
+python scripts/ispu_validation.py verify
+```
+
+For `NUCLEO-U575ZI-Q`, replace only the flash command:
+
+```bash
+python scripts/ispu_validation.py flash --board nucleo-u575zi-q --ispu-repository ../st-mems-ispu
+```
+
+The required physical result is six correct predictions matching both the host
+and ground truth. The verifier also prints the actual maximum score difference;
+it does not conceal it behind a hard-coded message. After the run, return the
+complete `artifacts/model_zoo/linear_softmax/prediction_st_ispu/target`
+directory and `bridge_flash.log`. They contain the raw ST validation log, NPZ
+outputs, hashes, and normalized prediction JSON needed for independent checking.
+
+## 10. Final result check
+
+After every previous command, including physical N6 and ISPU prediction,
+completes, run this single final check. Without either physical result this
+check intentionally fails because the complete reproduction is not finished.
 
 ```bash
 cd ../../tiny_ai_for_chemical_dangerous_weapon_gas_classification
@@ -315,6 +405,7 @@ Developer Cloud benchmarks (values parsed from logs):
   NUCLEO-F401RE: 0.11 ms, 0.009 M cycles, 2.03 KiB RAM, 7.92 KiB Flash
   LSM6DSO16IS: 10.97 ms, 0.055 M cycles, 1.54 KiB RAM, 1.51 KiB Flash
 Physical STM32N6: 6/6 predictions match host; score delta <= 0.015625
+Physical LSM6DSO16IS: 6/6 predictions match host and ground truth; maximum score delta <value parsed from the physical output>
 ```
 
 TensorFlow floating-point details can vary across operating systems and CPU
@@ -322,6 +413,9 @@ implementations. If predictions or reported values differ, this check fails
 instead of accepting an approximate reproduction. The physical score delta may
 vary, but the check requires exact class agreement and no more than four INT8
 output steps (`0.015625`).
+For ISPU, class agreement and 6/6 ground-truth accuracy are mandatory; its
+host/target score delta is reported as a diagnostic until the physical logs
+establish the reference value.
 
 ## References
 
