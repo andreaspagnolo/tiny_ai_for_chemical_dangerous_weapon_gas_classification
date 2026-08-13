@@ -53,6 +53,25 @@ weights with Adam.
 The untouched test split contains 332 spectra at the held-out 6% and 75%
 concentrations.
 
+### Local model comparison
+
+| Model | Definition | Parameters | Test accuracy |
+|---|---|---:|---:|
+| Linear Softmax | `Flatten(512) -> Dense(3, softmax)` | 1,539 | **99.70%** |
+| Tiny spectral CNN | Four spectral convolution/pooling blocks, followed by `Dense(16)` and softmax | 10,899 | 83.73% |
+| Residual spectral TCN | Five dilated residual blocks (`1, 2, 4, 8, 16`), average pooling, `Dense(16)`, and softmax | 10,771 | 72.89% |
+
+All three models were trained and evaluated locally with the same deterministic,
+concentration-grouped split. The table reports the accuracy of each selected
+FP32 Keras checkpoint. CNN and TCN are included as model-selection experiments;
+the reproducible workflow below concerns the selected Linear Softmax model.
+Linear Softmax was selected because it achieved the highest test accuracy while
+using approximately one seventh of the parameters of either convolutional
+alternative. In this experiment, the added CNN and TCN complexity did not
+improve generalization to the two held-out concentrations.
+
+### Selected-model representations
+
 | Workflow | Model | Accuracy | Macro F1 |
 |---|---|---:|---:|
 | Local | Keras FP32 | 99.70% | 99.70% |
