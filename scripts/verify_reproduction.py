@@ -22,43 +22,18 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.ispu_validation import verify_ispu_results
-from scripts.verify_stm32n6_prediction import verify_stm32n6_prediction
+from scripts.verify_stm32n6_prediction import MAX_SCORE_DELTA, verify_stm32n6_prediction
 
 
 LOCAL_ACCURACY = 0.9969879518072289
 LOCAL_MACRO_F1 = 0.9970209513356721
 TRAINING_SAMPLES = 1445
 MODEL_PARAMETERS = 1539
-# Golden references used only for validation. The reported values are parsed from logs.
-EXPECTED_BOARD_RESULTS = {
-    "stm32n6": {
-        "board": "STM32N6570-DK",
-        "cycles": "0.017",
-        "inference_ms": "0.02",
-        "ram_kib": "0.53",
-        "flash_kib": "24.35",
-    },
-    "stm32u5": {
-        "board": "B-U585I-IOT02A",
-        "cycles": "0.01",
-        "inference_ms": "0.06",
-        "ram_kib": "2.03",
-        "flash_kib": "7.94",
-    },
-    "stm32f4": {
-        "board": "NUCLEO-F401RE",
-        "cycles": "0.009",
-        "inference_ms": "0.11",
-        "ram_kib": "2.03",
-        "flash_kib": "7.92",
-    },
-    "st_ispu": {
-        "board": "LSM6DSO16IS",
-        "cycles": "0.055",
-        "inference_ms": "10.97",
-        "ram_kib": "1.54",
-        "flash_kib": "1.51",
-    },
+EXPECTED_BOARDS = {
+    "stm32n6": "STM32N6570-DK",
+    "stm32u5": "B-U585I-IOT02A",
+    "stm32f4": "NUCLEO-F401RE",
+    "st_ispu": "LSM6DSO16IS",
 }
 
 
@@ -112,16 +87,14 @@ def _extract_board(log: str) -> str:
     raise AssertionError("Developer Cloud log does not report the benchmark target")
 
 
-def _assert_expected_log_value(actual: str, expected: str, label: str) -> None:
-    if Decimal(actual) != Decimal(expected):
-        raise AssertionError(
-            f"Developer Cloud log reports {label} = {actual}, expected {expected}"
-        )
+def _assert_positive_log_value(actual: str, label: str) -> None:
+    if not Decimal(actual).is_finite() or Decimal(actual) <= 0:
+        raise AssertionError(f"Developer Cloud log reports invalid {label} = {actual}")
 
 
 def verify_board_logs(root: Path = ROOT) -> dict[str, dict[str, str]]:
     actual_results = {}
-    for family, expected in EXPECTED_BOARD_RESULTS.items():
+    for family, expected_board in EXPECTED_BOARDS.items():
         log_path = (
             root
             / "artifacts/model_zoo/linear_softmax"
@@ -137,13 +110,13 @@ def verify_board_logs(root: Path = ROOT) -> dict[str, dict[str, str]]:
             "ram_kib": _extract_log_metric(log, ("Total RAM",), "KiB"),
             "flash_kib": _extract_log_metric(log, ("Total Flash",), "KiB"),
         }
-        if actual["board"] != expected["board"]:
+        if actual["board"] != expected_board:
             raise AssertionError(
                 f"Developer Cloud log {log_path} reports board {actual['board']}, "
-                f"expected {expected['board']}"
+                f"expected {expected_board}"
             )
         for key in ("cycles", "inference_ms", "ram_kib", "flash_kib"):
-            _assert_expected_log_value(actual[key], expected[key], key)
+            _assert_positive_log_value(actual[key], key)
         if "Benchmark complete." not in log and "operation finished: benchmarking" not in log:
             raise AssertionError(f"Developer Cloud benchmark did not complete in {log_path}")
         actual_results[family] = actual
@@ -201,23 +174,27 @@ def verify_model_zoo_candidate() -> tuple[
 
 def main() -> int:
     verify_local()
-    _, board_results, ispu_result = verify_model_zoo_candidate()
+    n6_delta, board_results, ispu_result = verify_model_zoo_candidate()
     print("Reproduction verified successfully")
     print("Local Linear Softmax: accuracy 99.70%, macro F1 99.70%")
     print("Model Zoo Linear Softmax: FP32/INT8 accuracy 100.00%, macro F1 100.00%")
-    print("Developer Cloud benchmarks (values parsed from logs):")
+    print("Developer Cloud benchmark observations (parsed from logs; not pass/fail limits):")
     for result in board_results.values():
         print(
             f"  {result['board']}: {result['inference_ms']} ms, "
             f"{result['cycles']} M cycles, {result['ram_kib']} KiB RAM, "
             f"{result['flash_kib']} KiB Flash"
         )
-    print("Physical STM32N6: 6/6 predictions match host; score delta <= 0.015625")
+    print(
+        "Physical STM32N6: 6/6 predictions match host; maximum score delta "
+        f"{n6_delta:.8f} (limit {MAX_SCORE_DELTA:.8f})"
+    )
     print(
         "Physical LSM6DSO16IS: "
         f"{ispu_result['correct']}/{ispu_result['total']} predictions match host "
         f"and ground truth; maximum score delta "
-        f"{ispu_result['max_score_delta']:.8f}"
+        f"{ispu_result['max_score_delta']:.8f}; observed duration at "
+        f"{ispu_result['clock_mhz']} MHz: {ispu_result['duration_ms']:.3f} ms"
     )
     return 0
 

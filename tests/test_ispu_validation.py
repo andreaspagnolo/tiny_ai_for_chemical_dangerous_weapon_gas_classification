@@ -9,11 +9,14 @@ import pytest
 import scripts.ispu_validation as ispu_validation
 from scripts.ispu_validation import (
     CLASS_NAMES,
+    EXPECTED_ISPU_CLOCK_MHZ,
     EXPECTED_CLASSES,
     ISPU_REPOSITORY_REVISION,
     ROOT,
     _generated_outputs,
+    _prepare_ispu_configuration,
     _result_payload,
+    _target_duration_ms,
     _validation_fingerprint,
     build_validation_arrays,
     verify_ispu_results,
@@ -151,7 +154,78 @@ def test_flash_uses_pinned_prebuilt_bridge(tmp_path, monkeypatch):
     ]
 
 
-def _write_results(tmp_path: Path, last_target_class: str | None = None):
+def test_target_configuration_is_generated_with_explicit_10mhz_clock(
+    tmp_path, monkeypatch
+):
+    repository = tmp_path / "st-mems-ispu"
+    template = (
+        repository
+        / "examples/ism330is_lsm6dso16is/template_stedgeai_validate/ispu"
+    )
+    (template / "make").mkdir(parents=True)
+    (template / "conf.txt").write_text(
+        "acc_odr 6667\n\nispu_clock 5\n", encoding="utf-8"
+    )
+    output_root = tmp_path / "output"
+    model_path = tmp_path / "model.tflite"
+    model_path.write_bytes(b"model")
+    commands = []
+
+    def fake_run(command, log_path, environment):
+        commands.append(command)
+        if command[0] == "make":
+            configuration = output_root / "ispu_application_10mhz/make/bin/ispu.json"
+            configuration.parent.mkdir(parents=True)
+            configuration.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(ispu_validation, "OUTPUT_ROOT", output_root)
+    monkeypatch.setattr(ispu_validation, "MODEL_PATH", model_path)
+    monkeypatch.setattr(
+        ispu_validation,
+        "_ispu_repository_revision",
+        lambda path: ISPU_REPOSITORY_REVISION,
+    )
+    monkeypatch.setattr(ispu_validation, "_run_and_log", fake_run)
+    monkeypatch.setattr(
+        ispu_validation.shutil,
+        "which",
+        lambda executable, path=None: "make" if executable == "make" else None,
+    )
+
+    configuration = _prepare_ispu_configuration(
+        "stedgeai", {"PATH": "tools"}, repository, EXPECTED_ISPU_CLOCK_MHZ
+    )
+
+    assert configuration.is_file()
+    assert (
+        output_root / "ispu_application_10mhz/conf.txt"
+    ).read_text(encoding="utf-8").endswith("ispu_clock 10\n")
+    assert commands[0][0:6] == [
+        "stedgeai",
+        "generate",
+        "--target",
+        "ispu",
+        "--device",
+        "imu_22",
+    ]
+    assert commands[1][0] == "make"
+
+
+def test_target_duration_is_parsed_from_real_st_log_format(tmp_path):
+    log_path = tmp_path / "validation.log"
+    log_path.write_text(
+        "duration       :   23.994 ms by sample (23.261/24.248/0.373)\n",
+        encoding="utf-8",
+    )
+
+    assert _target_duration_ms(log_path) == pytest.approx(23.994)
+
+
+def _write_results(
+    tmp_path: Path,
+    last_target_class: str | None = None,
+    clock_mhz: int = EXPECTED_ISPU_CLOCK_MHZ,
+):
     labels = EXPECTED_CLASSES
     host_scores = np.eye(3, dtype=np.float32)[[0, 0, 1, 1, 2, 2]]
     target_scores = host_scores * 0.98 + (1.0 - host_scores) * 0.01
@@ -185,13 +259,17 @@ def _write_results(tmp_path: Path, last_target_class: str | None = None):
     )
     target_path.write_text(
         json.dumps(
-            _result_payload(
-                "stedgeai_ispu_target",
-                target_scores,
-                labels,
-                "model-hash",
-                fingerprint,
-            )
+            {
+                **_result_payload(
+                    "stedgeai_ispu_target",
+                    target_scores,
+                    labels,
+                    "model-hash",
+                    fingerprint,
+                ),
+                "ispu_clock_mhz": clock_mhz,
+                "duration_ms": 12.345,
+            }
         ),
         encoding="utf-8",
     )
@@ -206,6 +284,8 @@ def test_ispu_verifier_accepts_target_predictions_matching_ground_truth(tmp_path
     assert result["correct"] == 6
     assert result["total"] == 6
     assert result["max_score_delta"] == pytest.approx(0.02)
+    assert result["clock_mhz"] == 10
+    assert result["duration_ms"] == pytest.approx(12.345)
 
 
 def test_ispu_verifier_rejects_physical_class_disagreement(tmp_path):
@@ -217,10 +297,18 @@ def test_ispu_verifier_rejects_physical_class_disagreement(tmp_path):
         verify_ispu_results(host_path, target_path, manifest_path)
 
 
+def test_ispu_verifier_rejects_ambiguous_5mhz_target_run(tmp_path):
+    host_path, target_path, manifest_path = _write_results(tmp_path, clock_mhz=5)
+
+    with pytest.raises(AssertionError, match="must use 10 MHz"):
+        verify_ispu_results(host_path, target_path, manifest_path)
+
+
 def test_readme_contains_complete_physical_ispu_workflow():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert ISPU_REPOSITORY_REVISION in readme
+    assert "target --clock-mhz 10 --ispu-repository ../st-mems-ispu" in readme
     for command in (
         "python scripts/ispu_validation.py prepare",
         "python scripts/ispu_validation.py host",

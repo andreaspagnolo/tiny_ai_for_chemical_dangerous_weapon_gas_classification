@@ -8,6 +8,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import subprocess
@@ -27,6 +28,7 @@ from raman_stm32.modeling import tflite_details
 CLASS_NAMES = ("TEP", "DIMP", "DMMP")
 EXPECTED_CLASSES = ("TEP", "TEP", "DIMP", "DIMP", "DMMP", "DMMP")
 ISPU_DEVICE = "imu_22"
+EXPECTED_ISPU_CLOCK_MHZ = 10
 MODEL_PATH = (
     ROOT
     / "artifacts/model_zoo/linear_softmax/quantization/quantized_models/quantized_model.tflite"
@@ -293,7 +295,102 @@ def _generated_outputs(output_dir: Path) -> tuple[Path, np.ndarray]:
     return path, scores.astype(np.float32)
 
 
-def run_validation(mode: str) -> dict:
+def _set_ispu_clock(conf_path: Path, clock_mhz: int) -> None:
+    if clock_mhz not in (5, 10):
+        raise ValueError(f"ISPU clock must be 5 or 10 MHz, obtained {clock_mhz}")
+    text = conf_path.read_text(encoding="utf-8")
+    updated, count = re.subn(
+        r"(?m)^ispu_clock[ \t]+\d+[ \t]*$",
+        f"ispu_clock {clock_mhz}",
+        text,
+    )
+    if count != 1:
+        raise ValueError(f"Expected one ispu_clock setting in {conf_path}, found {count}")
+    conf_path.write_text(updated, encoding="utf-8")
+
+
+def _prepare_ispu_configuration(
+    executable: str,
+    environment: dict,
+    ispu_repository: Path,
+    clock_mhz: int,
+) -> Path:
+    repository = ispu_repository.resolve()
+    revision = _ispu_repository_revision(repository)
+    if revision != ISPU_REPOSITORY_REVISION:
+        raise ValueError(
+            f"Expected st-mems-ispu {ISPU_REPOSITORY_REVISION}, found {revision}"
+        )
+    template = (
+        repository
+        / "examples/ism330is_lsm6dso16is/template_stedgeai_validate/ispu"
+    )
+    if not template.is_dir():
+        raise FileNotFoundError(f"Missing ISPU validation template: {template}")
+
+    application_dir = OUTPUT_ROOT / f"ispu_application_{clock_mhz}mhz"
+    if application_dir.exists():
+        shutil.rmtree(application_dir)
+    shutil.copytree(template, application_dir)
+    _set_ispu_clock(application_dir / "conf.txt", clock_mhz)
+
+    generate_command = [
+        executable,
+        "generate",
+        "--target",
+        "ispu",
+        "--device",
+        ISPU_DEVICE,
+        "--model",
+        str(MODEL_PATH),
+        "--input-data-type",
+        "float32",
+        "--output-data-type",
+        "float32",
+        "--no-workspace",
+        "--no-report",
+        "--output",
+        str(application_dir),
+    ]
+    _run_and_log(
+        generate_command,
+        OUTPUT_ROOT / f"generate_{clock_mhz}mhz.log",
+        environment,
+    )
+    make_executable = shutil.which("make", path=environment.get("PATH", ""))
+    if make_executable is None:
+        raise FileNotFoundError("GNU Make is required to build the ISPU configuration")
+    _run_and_log(
+        [make_executable, "-C", str(application_dir / "make")],
+        OUTPUT_ROOT / f"build_{clock_mhz}mhz.log",
+        environment,
+    )
+    configuration = application_dir / "make/bin/ispu.json"
+    if not configuration.is_file():
+        raise FileNotFoundError(f"ISPU build did not create {configuration}")
+    return configuration
+
+
+def _target_duration_ms(log_path: Path) -> float:
+    log = log_path.read_text(encoding="utf-8")
+    match = re.search(
+        r"duration\s*:\s*(?P<duration>\d+(?:\.\d+)?)\s*ms\s+by\s+sample",
+        log,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        raise AssertionError(f"ISPU target log does not report duration: {log_path}")
+    duration = float(match.group("duration"))
+    if not np.isfinite(duration) or duration <= 0:
+        raise AssertionError(f"ISPU target log reports invalid duration: {duration}")
+    return duration
+
+
+def run_validation(
+    mode: str,
+    ispu_repository: Path | None = None,
+    clock_mhz: int = EXPECTED_ISPU_CLOCK_MHZ,
+) -> dict:
     if mode not in ("host", "target"):
         raise ValueError(f"Unsupported ISPU validation mode: {mode}")
     manifest, _, _, labels = _load_manifest()
@@ -319,6 +416,13 @@ def run_validation(mode: str) -> dict:
                 + "; add the ISPU Toolchain bin directory to PATH or set "
                 "ISPU_TOOLCHAIN_BIN, and install GNU Make"
             )
+
+    ispu_configuration = None
+    if mode == "target":
+        repository = ispu_repository or ROOT.parent / "st-mems-ispu"
+        ispu_configuration = _prepare_ispu_configuration(
+            executable, environment, repository, clock_mhz
+        )
 
     output_dir = HOST_OUTPUT_DIR if mode == "host" else TARGET_OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -349,6 +453,8 @@ def run_validation(mode: str) -> dict:
         "--valinput",
         str(VALIDATION_DATA_PATH),
     ]
+    if ispu_configuration is not None:
+        command.extend(["--ispu-conf", str(ispu_configuration)])
     log_path = output_dir / "validation.log"
     _run_and_log(command, log_path, environment)
     source_npz, scores = _generated_outputs(output_dir)
@@ -361,12 +467,22 @@ def run_validation(mode: str) -> dict:
         command=command,
         source_npz=source_npz,
     )
+    if mode == "target":
+        payload["ispu_clock_mhz"] = clock_mhz
+        payload["ispu_configuration"] = str(ispu_configuration)
+        payload["ispu_configuration_sha256"] = _sha256_file(ispu_configuration)
+        payload["duration_ms"] = _target_duration_ms(log_path)
     result_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     _print_prediction_summary(payload)
     print(
         f"ISPU {mode} accuracy against ground truth: "
         f"{payload['correct']}/{payload['total']} ({payload['accuracy']:.2%})"
     )
+    if mode == "target":
+        print(
+            f"ISPU target duration at {clock_mhz} MHz: "
+            f"{payload['duration_ms']:.3f} ms by sample (observed, not a pass/fail limit)"
+        )
     print(f"Prediction results written to {result_path}")
     return payload
 
@@ -457,6 +573,17 @@ def verify_ispu_results(
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     host = _load_result(host_path, "stedgeai_ispu_host", manifest)
     target = _load_result(target_path, "stedgeai_ispu_target", manifest)
+    target_payload = json.loads(target_path.read_text(encoding="utf-8"))
+    if target_payload.get("ispu_clock_mhz") != EXPECTED_ISPU_CLOCK_MHZ:
+        raise AssertionError(
+            f"Physical ISPU result must use {EXPECTED_ISPU_CLOCK_MHZ} MHz, "
+            f"obtained {target_payload.get('ispu_clock_mhz')}"
+        )
+    target_duration_ms = float(target_payload.get("duration_ms", 0.0))
+    if not np.isfinite(target_duration_ms) or target_duration_ms <= 0:
+        raise AssertionError(
+            f"Physical ISPU result has invalid observed duration {target_duration_ms}"
+        )
     host_classes = [item["predicted_class"] for item in host]
     target_classes = [item["predicted_class"] for item in target]
     if tuple(host_classes) != EXPECTED_CLASSES:
@@ -485,6 +612,8 @@ def verify_ispu_results(
         "correct": len(target_classes),
         "total": len(EXPECTED_CLASSES),
         "max_score_delta": float(np.max(np.abs(host_scores - target_scores))),
+        "clock_mhz": EXPECTED_ISPU_CLOCK_MHZ,
+        "duration_ms": target_duration_ms,
     }
 
 
@@ -493,7 +622,20 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("prepare", help="create deterministic ISPU validation data")
     subparsers.add_parser("host", help="validate generated ISPU code on the host")
-    subparsers.add_parser("target", help="validate the model on a physical ISPU")
+    target_parser = subparsers.add_parser(
+        "target", help="validate the model on a physical ISPU"
+    )
+    target_parser.add_argument(
+        "--ispu-repository",
+        type=Path,
+        default=ROOT.parent / "st-mems-ispu",
+    )
+    target_parser.add_argument(
+        "--clock-mhz",
+        type=int,
+        choices=(5, 10),
+        default=EXPECTED_ISPU_CLOCK_MHZ,
+    )
     flash_parser = subparsers.add_parser("flash", help="flash the Nucleo bridge firmware")
     flash_parser.add_argument("--board", choices=tuple(BRIDGE_BINARIES), required=True)
     flash_parser.add_argument("--ispu-repository", type=Path, required=True)
@@ -506,8 +648,10 @@ def main() -> int:
     args = _parser().parse_args()
     if args.command == "prepare":
         prepare_validation()
-    elif args.command in ("host", "target"):
+    elif args.command == "host":
         run_validation(args.command)
+    elif args.command == "target":
+        run_validation(args.command, args.ispu_repository, args.clock_mhz)
     elif args.command == "flash":
         flash_bridge(args.board, args.ispu_repository, args.probe_index)
     elif args.command == "verify":
@@ -517,6 +661,10 @@ def main() -> int:
             f"{result['correct']}/{result['total']} predictions match host and ground truth"
         )
         print(f"Maximum host/ISPU score delta: {result['max_score_delta']:.8f}")
+        print(
+            f"Observed ISPU duration at {result['clock_mhz']} MHz: "
+            f"{result['duration_ms']:.3f} ms by sample"
+        )
     return 0
 
 

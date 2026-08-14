@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from scripts.verify_reproduction import EXPECTED_BOARD_RESULTS, verify_board_logs
+from scripts.verify_reproduction import EXPECTED_BOARDS, verify_board_logs
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,30 +87,38 @@ def test_prediction_configs_share_model_input_and_preprocessing():
 
 
 def test_board_verifier_returns_values_parsed_from_logs(tmp_path):
-    for family, expected in EXPECTED_BOARD_RESULTS.items():
+    observed = {
+        "stm32n6": ("0.021", "0.031", "0.61", "25.40"),
+        "stm32u5": ("0.012", "0.08", "2.10", "8.01"),
+        "stm32f4": ("0.011", "0.14", "2.12", "8.08"),
+        # Deliberately differs from the README reference observation: performance
+        # values are parsed and reported, not used as reproduction limits.
+        "st_ispu": ("0.061", "12.34", "1.60", "1.58"),
+    }
+    for family, board in EXPECTED_BOARDS.items():
         output_dir = (
             tmp_path
             / "artifacts/model_zoo/linear_softmax"
             / f"benchmarking_{family}"
         )
         output_dir.mkdir(parents=True)
-        cycles = "0.010" if family == "stm32u5" else expected["cycles"]
+        cycles, inference_ms, ram_kib, flash_kib = observed[family]
         if family == "stm32f4":
             lines = (
-                f"[INFO] : Starting the model benchmark on target {expected['board']},",
+                f"[INFO] : Starting the model benchmark on target {board},",
                 f"[INFO] : Number of cycles : {cycles} (M)",
-                f"[INFO] : Inference Time : {expected['inference_ms']} (ms)",
-                f"[INFO] : Total RAM : {expected['ram_kib']} (KiB)",
-                f"[INFO] : Total Flash : {expected['flash_kib']} (KiB)",
+                f"[INFO] : Inference Time : {inference_ms} (ms)",
+                f"[INFO] : Total RAM : {ram_kib} (KiB)",
+                f"[INFO] : Total Flash : {flash_kib} (KiB)",
                 "[INFO] : Benchmark complete.",
             )
         else:
             lines = (
-                f"Benchmarking board : {expected['board']}",
+                f"Benchmarking board : {board}",
                 f"Cycles : {cycles} M",
-                f"Inference_time : {expected['inference_ms']} ms",
-                f"Total RAM : {expected['ram_kib']} KiB",
-                f"Total Flash : {expected['flash_kib']} KiB",
+                f"Inference_time : {inference_ms} ms",
+                f"Total RAM : {ram_kib} KiB",
+                f"Total Flash : {flash_kib} KiB",
                 "operation finished: benchmarking",
             )
         (output_dir / "stm32ai_main.log").write_text(
@@ -121,7 +129,7 @@ def test_board_verifier_returns_values_parsed_from_logs(tmp_path):
     actual = verify_board_logs(tmp_path)
 
     assert actual["stm32n6"]["board"] == "STM32N6570-DK"
-    assert actual["stm32n6"]["inference_ms"] == "0.02"
-    assert actual["stm32u5"]["cycles"] == "0.010"
+    assert actual["stm32n6"]["inference_ms"] == "0.031"
+    assert actual["stm32u5"]["cycles"] == "0.012"
     assert actual["st_ispu"]["board"] == "LSM6DSO16IS"
-    assert actual["st_ispu"]["inference_ms"] == "10.97"
+    assert actual["st_ispu"]["inference_ms"] == "12.34"

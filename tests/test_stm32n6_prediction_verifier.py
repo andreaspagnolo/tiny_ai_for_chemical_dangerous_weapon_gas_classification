@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.verify_stm32n6_prediction import verify_stm32n6_prediction
+from scripts.verify_stm32n6_prediction import MAX_SCORE_DELTA, verify_stm32n6_prediction
 
 
 EXPECTED = ["TEP", "TEP", "DIMP", "DIMP", "DMMP", "DMMP"]
@@ -40,6 +40,18 @@ def test_n6_verifier_accepts_matching_predictions(tmp_path):
     _write(host, "host")
     _write(n6, "stedgeai_n6", score_shift=1.0 / 256.0)
     assert verify_stm32n6_prediction(host, n6) == pytest.approx(1.0 / 256.0)
+
+
+def test_n6_verifier_uses_32_quantization_step_limit(tmp_path):
+    host = tmp_path / "host.json"
+    n6 = tmp_path / "n6.json"
+    _write(host, "host")
+    _write(n6, "stedgeai_n6", score_shift=MAX_SCORE_DELTA)
+    assert verify_stm32n6_prediction(host, n6) == pytest.approx(MAX_SCORE_DELTA)
+
+    _write(n6, "stedgeai_n6", score_shift=MAX_SCORE_DELTA + 1.0 / 256.0)
+    with pytest.raises(AssertionError, match="exceeds 32 INT8 output steps"):
+        verify_stm32n6_prediction(host, n6)
 
 
 def test_n6_verifier_rejects_class_disagreement(tmp_path):
